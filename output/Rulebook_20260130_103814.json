@@ -1,0 +1,113 @@
+{
+  "rules": [
+    {
+      "column": "user_name",
+      "dimension": "Standardization",
+      "rule_type": "trim leading/trailing/multiple spaces and standardize case (title case)",
+      "expression": null,
+      "message": "user_name: trim leading/trailing/multiple spaces and standardize case (title case) validation failed",
+      "severity": "MEDIUM"
+    },
+    {
+      "column": "user_name",
+      "dimension": "Standardization",
+      "rule_type": "remove legal suffix variations (ltd, limited, pvt ltd etc.) into a normalized canonical suffix and check for any special unwanted characters in the field",
+      "expression": null,
+      "message": "user_name: remove legal suffix variations (ltd, limited, pvt ltd etc.) into a normalized canonical suffix and check for any special unwanted characters in the field validation failed",
+      "severity": "MEDIUM"
+    },
+    {
+      "column": "user_name",
+      "dimension": "Completeness",
+      "rule_type": "not_null",
+      "expression": null,
+      "message": "user_name: not_null validation failed",
+      "severity": "MEDIUM"
+    },
+    {
+      "column": "address",
+      "dimension": "Completeness",
+      "rule_type": "not_null",
+      "expression": null,
+      "message": "address: not_null validation failed",
+      "severity": "MEDIUM"
+    },
+    {
+      "column": "address",
+      "dimension": "Standardization",
+      "rule_type": "no_special_chars",
+      "expression": null,
+      "message": "address: no_special_chars validation failed",
+      "severity": "MEDIUM"
+    },
+    {
+      "column": "city",
+      "dimension": "Standardization",
+      "rule_type": "map city aliases to a single standard city name (e.g., gurgaon/gurugram -> gurgaon)",
+      "expression": null,
+      "message": "city: map city aliases to a single standard city name (e.g., gurgaon/gurugram -> gurgaon) validation failed",
+      "severity": "MEDIUM"
+    },
+    {
+      "column": "city",
+      "dimension": "Completeness",
+      "rule_type": "not_null",
+      "expression": null,
+      "message": "city: not_null validation failed",
+      "severity": "MEDIUM"
+    },
+    {
+      "column": "city",
+      "dimension": "Validation",
+      "rule_type": "city names should be valid as per the country (indian address should have only indian cities)",
+      "expression": null,
+      "message": "city: city names should be valid as per the country (indian address should have only indian cities) validation failed",
+      "severity": "MEDIUM"
+    },
+    {
+      "column": "country",
+      "dimension": "Standardization",
+      "rule_type": "map country variants to a standard form (e.g., usa, u.s.a., america -> united states)",
+      "expression": null,
+      "message": "country: map country variants to a standard form (e.g., usa, u.s.a., america -> united states) validation failed",
+      "severity": "MEDIUM"
+    },
+    {
+      "column": "country",
+      "dimension": "Completeness",
+      "rule_type": "not_null",
+      "expression": null,
+      "message": "country: not_null validation failed",
+      "severity": "MEDIUM"
+    },
+    {
+      "column": "country",
+      "dimension": "Validation",
+      "rule_type": "country should be a valid & existing country",
+      "expression": null,
+      "message": "country: country should be a valid & existing country validation failed",
+      "severity": "MEDIUM"
+    },
+    {
+      "column": "user_name",
+      "dimension": "Uniqueness",
+      "rule_type": "uniqueness",
+      "expression": null,
+      "message": "user_name: uniqueness validation failed",
+      "severity": "MEDIUM"
+    },
+    {
+      "column": "address",
+      "dimension": "Uniqueness",
+      "rule_type": "uniqueness",
+      "expression": null,
+      "message": "address: uniqueness validation failed",
+      "severity": "MEDIUM"
+    }
+  ],
+  "metadata": {
+    "created": "2026-01-30T10:38:13.414974",
+    "total_rules": 13,
+    "source": "rules_dataset"
+  }
+}
