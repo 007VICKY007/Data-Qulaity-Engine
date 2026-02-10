@@ -1,6 +1,7 @@
 """
 UI Components Module
 Streamlit UI components for the DQ Engine
+All styling moved to external CSS file
 """
 
 import streamlit as st
@@ -17,7 +18,7 @@ class UIComponents:
     def render_header():
         """Render application header"""
         st.markdown(
-            f'<h1 style="color: #1F4E78;">{AppConfig.APP_ICON} {AppConfig.APP_TITLE}</h1>',
+            f'<h1 class="purple-text">{AppConfig.APP_ICON} {AppConfig.APP_TITLE}</h1>',
             unsafe_allow_html=True
         )
         st.caption(f"Version {AppConfig.VERSION} | Enterprise-Grade Data Quality Validation")
@@ -267,27 +268,33 @@ class UIComponents:
         
         with col1:
             st.markdown("""
-            ### 1️⃣ Upload Files
-            - Master dataset (CSV/Excel/JSON)
-            - Rules dataset or JSON rulebook
-            - Supports multiple formats
-            """)
+            <div class="step-card">
+            <h3>1️⃣ Upload Files</h3>
+            <p>Master dataset (CSV/Excel/JSON)</p>
+            <p>Rules dataset or JSON rulebook</p>
+            <p>Supports multiple formats</p>
+            </div>
+            """, unsafe_allow_html=True)
         
         with col2:
             st.markdown("""
-            ### 2️⃣ Generate Rulebook
-            - Automatic rule mapping
-            - Dynamic validation logic
-            - Zero hardcoded rules
-            """)
+            <div class="step-card">
+            <h3>2️⃣ Generate Rulebook</h3>
+            <p>Automatic rule mapping</p>
+            <p>Dynamic validation logic</p>
+            <p>Zero hardcoded rules</p>
+            </div>
+            """, unsafe_allow_html=True)
         
         with col3:
             st.markdown("""
-            ### 3️⃣ Get Results
-            - DQ Score dashboard
-            - Column-wise annexures
-            - Downloadable reports
-            """)
+            <div class="step-card">
+            <h3>3️⃣ Get Results</h3>
+            <p>DQ Score dashboard</p>
+            <p>Column-wise annexures</p>
+            <p>Downloadable reports</p>
+            </div>
+            """, unsafe_allow_html=True)
         
         st.markdown("---")
         
@@ -321,5 +328,9 @@ class UIComponents:
     @staticmethod
     def render_footer():
         """Render application footer"""
-        st.caption(f"✔ Enterprise Grade | ✔ 100% Dynamic | ✔ Zero Hardcoded Logic")
-        st.caption(f"Powered by {AppConfig.APP_TITLE} v{AppConfig.VERSION}")
+        st.markdown("""
+        <div class="text-center margin-top-1">
+        <p class="caption">✔ Enterprise Grade | ✔ 100% Dynamic | ✔ Zero Hardcoded Logic</p>
+        <p class="caption">Powered by """ + AppConfig.APP_TITLE + " v" + AppConfig.VERSION + """</p>
+        </div>
+        """, unsafe_allow_html=True)

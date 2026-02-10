@@ -1,24 +1,7 @@
-"""
-app.py  ─  DQ Assessment  +  Data Maturity Assessment  (Fully Integrated)
-=========================================================================
-Single Streamlit entry-point  |  Three pages: Home → DQ → Maturity
-
-Project layout:
-    app.py
-    modules/          ← Data Quality engine (existing, unchanged)
-    DataMaturity/     ← Data Maturity module
-    output/
-    temp/
-    rules/
-
-Run:
-    pip install streamlit pandas numpy openpyxl xlsxwriter matplotlib reportlab
-    streamlit run app.py
-"""
-
 # ── stdlib ────────────────────────────────────────────────────────────────
 import traceback, datetime
 from io import BytesIO
+from pathlib import Path
 
 # ── third-party ───────────────────────────────────────────────────────────
 import streamlit as st
@@ -78,20 +61,14 @@ st.set_page_config(
 setup_directories()
 
 
-def _css():
-    st.markdown(f"""<style>
-      .stApp{{background:{UNIQU_LIGHT_BG};color:{UNIQU_TEXT}}}
-      section[data-testid="stSidebar"]{{background:#fff;border-right:1px solid {UNIQU_GREY}}}
-      h1,h2,h3,h4{{color:{UNIQU_PURPLE};font-family:"Segoe UI",Arial,sans-serif}}
-      .stButton>button{{background:{UNIQU_PURPLE};color:#fff;border:0;
-          border-radius:10px;padding:.55rem 1.1rem;font-weight:600}}
-      .stButton>button:hover{{background:{UNIQU_MAGENTA};color:#fff}}
-      button[kind="primary"]{{background:{UNIQU_PURPLE}!important}}
-      div[data-testid="stDataFrame"]{{border:1px solid {UNIQU_GREY};
-          border-radius:10px;background:#fff;padding:6px}}
-      .step-card{{background:#fff;border-radius:12px;padding:20px;
-          text-align:center;height:100%}}
-    </style>""", unsafe_allow_html=True)
+def load_css():
+    """Load external CSS file"""
+    css_file = Path(__file__).parent / "assets" / "styles.css"
+    if css_file.exists():
+        with open(css_file, "r", encoding="utf-8") as f:
+            st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+    else:
+        st.warning("CSS file not found. Using default styles.")
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -176,7 +153,7 @@ def _dim_bar_png(dim_scores: dict) -> bytes:
 
     for bar, sc in zip(bars, scores):
         ax.text(bar.get_width() + 1.5, bar.get_y() + bar.get_height() / 2,
-            f"{sc:.1f}%", va="center", fontsize=9,
+            f"{sc:.1f}%", va="center", fontsize=9.5,
             fontweight="bold", color=UNIQU_TEXT)
 
     plt.tight_layout()
@@ -223,165 +200,207 @@ def _mat_bar_png(dim_vals: dict) -> bytes:
 
 
 # ══════════════════════════════════════════════════════════════════════════
-#  COMBINED EXCEL  (DQ scores + Maturity scores in one workbook)
+#  COMBINED PDF BUILDER
 # ══════════════════════════════════════════════════════════════════════════
-def _combined_excel(dq_score, dq_dim_scores, dim_table, overall,
-                    detail_tables, low_thr, objects) -> bytes:
-    out = BytesIO()
-    with pd.ExcelWriter(out, engine="openpyxl") as w:
+def _build_combined_pdf(
+    client_name: str,
+    dq_score:    float,
+    dq_dim:      dict,
+    dq_results:  pd.DataFrame,
+    mat_slide:   bytes,
+    mat_dim:     pd.DataFrame,
+    mat_overall: pd.Series,
+    mat_detail:  dict,
+) -> bytes:
+    """
+    Single PDF:
+      1) DQ Summary Page
+      2) Maturity Slide (full-page image)
+      3) Maturity summary table
+      4) Maturity per-dimension pages
+    """
+    buff = BytesIO()
+    doc  = SimpleDocTemplate(
+        buff, pagesize=landscape(A4),
+        leftMargin=0.5 * inch, rightMargin=0.5 * inch,
+        topMargin=0.5  * inch, bottomMargin=0.5 * inch,
+    )
+    styles = getSampleStyleSheet()
+    story  = []
+    cn     = client_name.strip() or "Client"
 
-        # ── DQ Summary ────────────────────────────────────────
-        rows = [
-            {"Metric": "Overall DQ Score (%)",     "Value": f"{dq_score:.1f}%"},
-            {"Metric": "Mapped Maturity Level",     "Value": dq_score_to_maturity_level(dq_score)},
-        ]
-        if dq_dim_scores:
-            for dim, sc in dq_dim_scores.items():
-                rows.append({"Metric": f"DQ – {dim}", "Value": f"{sc:.1f}%"})
-        pd.DataFrame(rows).to_excel(w, sheet_name="DQ Score Summary", index=False)
+    # ──────────────────────────────────────────────────────────
+    # PAGE 1 : DQ Engine Summary
+    # ──────────────────────────────────────────────────────────
+    story.append(Paragraph(f"Data Quality Assessment – {cn}", styles["Title"]))
+    story.append(Spacer(1, 12))
 
-        # ── Maturity dimension scores ─────────────────────────
-        dim_table.to_excel(w, sheet_name="Maturity - Dimension Scores")
+    # Gauge
+    gauge_img = _gauge_png(dq_score)
+    story.append(RLImage(BytesIO(gauge_img), width=3.5 * inch, height=2.2 * inch))
+    story.append(Spacer(1, 12))
 
-        # ── Overall maturity ──────────────────────────────────
-        pd.DataFrame(overall).to_excel(w, sheet_name="Maturity - Overall Scores")
+    # Dimension scores
+    if dq_dim:
+        story.append(Paragraph("DQ Scores by Dimension", styles["Heading2"]))
+        story.append(Spacer(1, 6))
+        dim_df = pd.DataFrame(list(dq_dim.items()), columns=["Dimension", "DQ Score (%)"])
+        dim_data = [list(dim_df.columns)] + dim_df.values.tolist()
+        t = Table(dim_data, repeatRows=1)
+        t.setStyle(TableStyle([
+            ("BACKGROUND",     (0, 0), (-1,  0), rl_colors.HexColor(UNIQU_PURPLE)),
+            ("TEXTCOLOR",      (0, 0), (-1,  0), rl_colors.white),
+            ("FONTNAME",       (0, 0), (-1,  0), "Helvetica-Bold"),
+            ("FONTSIZE",       (0, 0), (-1,  0), 10),
+            ("FONTSIZE",       (0, 1), (-1, -1), 9),
+            ("GRID",           (0, 0), (-1, -1), 0.25, rl_colors.lightgrey),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1),
+             [rl_colors.whitesmoke, rl_colors.white]),
+            ("VALIGN",         (0, 0), (-1, -1), "TOP"),
+        ]))
+        story.append(t)
+        story.append(Spacer(1, 12))
 
-        # ── Detail per dimension ──────────────────────────────
-        for dim, df in detail_tables.items():
-            d = df.copy()
-            d.insert(0, "Dimension", dim)
-            d.to_excel(w, sheet_name=f"Detail - {dim[:20]}", index=False)
+    # Sample records (first 10)
+    story.append(Paragraph("DQ Results Sample (First 10 Records)", styles["Heading2"]))
+    story.append(Spacer(1, 6))
+    sample = dq_results.head(10)
+    display_cols = [c for c in sample.columns if not c.startswith("_")]
+    sample_disp  = sample[display_cols].copy()
 
-        # ── Exception sheets ──────────────────────────────────
-        for dim, df in detail_tables.items():
-            s = df.copy()
-            for o in objects:
-                s[o] = s[o].map(RATING_TO_SCORE).astype(float)
-            for o in objects:
-                exc = s[s[o] <= low_thr][
-                    ["Question ID", "Section", "Question", "Weight", o]
-                ].copy()
-                if len(exc):
-                    exc.to_excel(
-                        w,
-                        sheet_name=f"Exc-{o[:10]}-{dim[:8]}"[:31],
-                        index=False,
-                    )
-    return out.getvalue()
+    for col in sample_disp.columns:
+        sample_disp[col] = sample_disp[col].astype(str).str.slice(0, 40)
 
-
-# ══════════════════════════════════════════════════════════════════════════
-#  COMBINED PDF  (DQ scores + maturity slide + tables)
-# ══════════════════════════════════════════════════════════════════════════
-def _rl_table(df: pd.DataFrame, max_rows: int = 35) -> Table:
-    d    = df.head(max_rows).copy()
-    data = [list(d.columns)] + [
-        [str(cell) for cell in row] for row in d.values.tolist()
-    ]
-    t = Table(data, repeatRows=1)
-    t.setStyle(TableStyle([
+    data_sample = [list(sample_disp.columns)] + sample_disp.values.tolist()
+    ts = Table(data_sample, repeatRows=1)
+    ts.setStyle(TableStyle([
         ("BACKGROUND",     (0, 0), (-1,  0), rl_colors.HexColor(UNIQU_PURPLE)),
         ("TEXTCOLOR",      (0, 0), (-1,  0), rl_colors.white),
         ("FONTNAME",       (0, 0), (-1,  0), "Helvetica-Bold"),
-        ("FONTSIZE",       (0, 0), (-1,  0), 9),
-        ("FONTSIZE",       (0, 1), (-1, -1), 8),
+        ("FONTSIZE",       (0, 0), (-1,  0), 8),
+        ("FONTSIZE",       (0, 1), (-1, -1), 7),
         ("GRID",           (0, 0), (-1, -1), 0.25, rl_colors.lightgrey),
         ("ROWBACKGROUNDS", (0, 1), (-1, -1),
-         [rl_colors.HexColor("#f9f5ff"), rl_colors.white]),
+         [rl_colors.whitesmoke, rl_colors.white]),
         ("VALIGN",         (0, 0), (-1, -1), "TOP"),
-        ("LEFTPADDING",    (0, 0), (-1, -1), 5),
-        ("RIGHTPADDING",   (0, 0), (-1, -1), 5),
-        ("TOPPADDING",     (0, 0), (-1, -1), 3),
-        ("BOTTOMPADDING",  (0, 0), (-1, -1), 3),
     ]))
-    return t
-
-
-def _combined_pdf(client_name, slide_png_bytes,
-                  dim_table, overall, detail_tables,
-                  dq_score=None, dq_dim_scores=None) -> bytes:
-    buff  = BytesIO()
-    doc   = SimpleDocTemplate(
-        buff, pagesize=landscape(A4),
-        leftMargin=.5*inch, rightMargin=.5*inch,
-        topMargin=.5*inch,  bottomMargin=.5*inch,
-    )
-    stl = getSampleStyleSheet()
-    cn  = client_name.strip() or "Client"
-
-    title_sty = ParagraphStyle("TS", parent=stl["Title"],
-        textColor=rl_colors.HexColor(UNIQU_PURPLE), spaceAfter=4)
-    h2_sty = ParagraphStyle("H2", parent=stl["Heading2"],
-        textColor=rl_colors.HexColor(UNIQU_PURPLE))
-    note_sty = ParagraphStyle("Note", parent=stl["Italic"],
-        textColor=rl_colors.HexColor("#666666"), fontSize=8)
-
-    story = []
-
-    # Page 1 – Slide image
-    story.append(RLImage(BytesIO(slide_png_bytes),
-        width=10.8*inch, height=6.1*inch))
+    story.append(ts)
     story.append(PageBreak())
 
-    # Page 2 – DQ + Maturity summary
-    story.append(Paragraph(f"Assessment Summary  ·  {cn}", title_sty))
-    story.append(HRFlowable(width="100%", thickness=2,
-        color=rl_colors.HexColor(UNIQU_PURPLE), spaceAfter=10))
+    # ──────────────────────────────────────────────────────────
+    # PAGE 2 : Maturity Slide
+    # ──────────────────────────────────────────────────────────
+    story.append(RLImage(BytesIO(mat_slide), width=10.8 * inch, height=6.1 * inch))
+    story.append(PageBreak())
 
-    # DQ block
+    # ──────────────────────────────────────────────────────────
+    # PAGE 3 : Maturity Numeric Summary
+    # ──────────────────────────────────────────────────────────
+    story.append(Paragraph(f"Maturity Assessment Summary – {cn}", styles["Title"]))
+    story.append(Spacer(1, 10))
+
+    # Optional: DQ link
     if dq_score is not None:
-        story.append(Paragraph("Data Quality Engine Results", h2_sty))
-        story.append(Spacer(1, 6))
-        dq_rows = [
-            {"Metric": "Overall DQ Score (%)", "Value": f"{dq_score:.1f}%"},
-            {"Metric": "Mapped Maturity Level",
-             "Value": dq_score_to_maturity_level(dq_score)},
-        ]
-        if dq_dim_scores:
-            for d, sc in dq_dim_scores.items():
-                dq_rows.append({"Metric": f"DQ Dimension – {d}",
-                                "Value": f"{sc:.1f}%"})
-        story.append(_rl_table(pd.DataFrame(dq_rows)))
-        story.append(Spacer(1, 16))
+        lvl = dq_score_to_maturity_level(dq_score)
+        story.append(Paragraph("🔗 DQ Engine Input", styles["Heading2"]))
+        story.append(Spacer(1, 4))
+        dq_df = pd.DataFrame({
+            "Metric": ["DQ Overall Score (%)", "Mapped Maturity Level"],
+            "Value":  [f"{dq_score:.1f}%", lvl],
+        })
+        dq_data = [list(dq_df.columns)] + dq_df.values.tolist()
+        t_dq = Table(dq_data)
+        t_dq.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), rl_colors.HexColor(UNIQU_PURPLE)),
+            ("TEXTCOLOR",  (0, 0), (-1, 0), rl_colors.white),
+            ("FONTNAME",   (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE",   (0, 0), (-1, 0), 9),
+            ("GRID",       (0, 0), (-1, -1), 0.25, rl_colors.lightgrey),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1),
+             [rl_colors.whitesmoke, rl_colors.white]),
+        ]))
+        story.append(t_dq)
+        story.append(Spacer(1, 12))
 
-    # Maturity dimension table
-    story.append(Paragraph(
-        "Data Maturity – Dimension-wise Scores  (Weighted Average 1–5)", h2_sty))
+    # Dimension table
+    story.append(Paragraph("Dimension-wise Maturity (Weighted Average 1–5)", styles["Heading2"]))
     story.append(Spacer(1, 6))
-    story.append(_rl_table(
-        dim_table.reset_index()
-                 .rename(columns={"index": "Dimension"})
-                 .round(2),
-        max_rows=50,
-    ))
-    story.append(Spacer(1, 16))
+    dim_df = mat_dim.reset_index().rename(columns={"index": "Dimension"}).round(2)
+    dim_data = [list(dim_df.columns)] + dim_df.values.tolist()
+    t_dim = Table(dim_data, repeatRows=1)
+    t_dim.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), rl_colors.HexColor(UNIQU_PURPLE)),
+        ("TEXTCOLOR",  (0, 0), (-1, 0), rl_colors.white),
+        ("FONTNAME",   (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE",   (0, 0), (-1, 0), 9),
+        ("FONTSIZE",   (0, 1), (-1, -1), 8),
+        ("GRID",       (0, 0), (-1, -1), 0.25, rl_colors.lightgrey),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1),
+         [rl_colors.whitesmoke, rl_colors.white]),
+        ("VALIGN",     (0, 0), (-1, -1), "TOP"),
+    ]))
+    story.append(t_dim)
+    story.append(Spacer(1, 12))
 
-    # Overall maturity
-    story.append(Paragraph(
-        "Overall Maturity Score  (Average of Dimensions)", h2_sty))
+    # Overall table
+    story.append(Paragraph("Overall Maturity (Average of Dimensions)", styles["Heading2"]))
     story.append(Spacer(1, 6))
-    story.append(_rl_table(pd.DataFrame({
-        "Master Data Object": list(overall.index),
-        "Overall Score":      [round(float(v), 2) for v in overall.values],
-    }), max_rows=200))
+    ov_df = pd.DataFrame({
+        "Master Data Object": list(mat_overall.index),
+        "Overall Score":      [round(float(v), 2) for v in mat_overall.values],
+    })
+    ov_data = [list(ov_df.columns)] + ov_df.values.tolist()
+    t_ov = Table(ov_data)
+    t_ov.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), rl_colors.HexColor(UNIQU_PURPLE)),
+        ("TEXTCOLOR",  (0, 0), (-1, 0), rl_colors.white),
+        ("FONTNAME",   (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE",   (0, 0), (-1, 0), 9),
+        ("GRID",       (0, 0), (-1, -1), 0.25, rl_colors.lightgrey),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1),
+         [rl_colors.whitesmoke, rl_colors.white]),
+    ]))
+    story.append(t_ov)
     story.append(PageBreak())
 
-    # Pages 3+ – Per-dimension detail
-    for dim, df in detail_tables.items():
-        story.append(Paragraph(f"Detailed Responses  ·  {dim}", h2_sty))
+    # ──────────────────────────────────────────────────────────
+    # PAGES 4+ : Per-dimension detailed responses
+    # ──────────────────────────────────────────────────────────
+    for dim, df in mat_detail.items():
+        story.append(Paragraph(f"Detailed Responses – {dim}", styles["Heading2"]))
         story.append(Spacer(1, 6))
+
         obj_cols = [c for c in df.columns
                     if c not in ["Question ID", "Section", "Question", "Weight"]]
-        cmp = df[["Question ID", "Section", "Question", "Weight"] + obj_cols].copy()
+        compact  = df[["Question ID", "Section", "Question", "Weight"] + obj_cols].copy()
+
+        # Convert rating labels → numeric scores
         for o in obj_cols:
-            cmp[o] = cmp[o].map(RATING_TO_SCORE)
-        cmp["Question"] = cmp["Question"].astype(str).str.slice(0, 88)
-        story.append(_rl_table(cmp, max_rows=35))
+            compact[o] = compact[o].map(RATING_TO_SCORE)
+
+        # Truncate long question text
+        compact["Question"] = compact["Question"].astype(str).str.slice(0, 95)
+
+        data_det = [list(compact.columns)] + compact.head(35).values.tolist()
+        t_det = Table(data_det, repeatRows=1)
+        t_det.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), rl_colors.HexColor(UNIQU_PURPLE)),
+            ("TEXTCOLOR",  (0, 0), (-1, 0), rl_colors.white),
+            ("FONTNAME",   (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE",   (0, 0), (-1, 0), 9),
+            ("FONTSIZE",   (0, 1), (-1, -1), 8),
+            ("GRID",       (0, 0), (-1, -1), 0.25, rl_colors.lightgrey),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1),
+             [rl_colors.whitesmoke, rl_colors.white]),
+            ("VALIGN",     (0, 0), (-1, -1), "TOP"),
+            ("LEFTPADDING",  (0, 0), (-1, -1), 4),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+        ]))
+        story.append(t_det)
         story.append(Spacer(1, 8))
         story.append(Paragraph(
-            "Scores: 1 = Adhoc  |  2 = Repeatable  |  3 = Defined  "
-            "|  4 = Managed  |  5 = Optimised",
-            note_sty,
+            "Note: Answers shown as numeric scores (1 = Adhoc … 5 = Optimised).",
+            styles["Italic"],
         ))
         story.append(PageBreak())
 
@@ -390,465 +409,409 @@ def _combined_pdf(client_name, slide_png_bytes,
 
 
 # ══════════════════════════════════════════════════════════════════════════
-#  PAGE 1 – HOME
+#  PAGE: HOME
 # ══════════════════════════════════════════════════════════════════════════
 def page_home():
-    st.title("📊 Data Quality & Maturity Assessment")
-    st.markdown("##### Integrated Enterprise Assessment Tool")
-    st.markdown("---")
+    st.markdown('<h1 class="purple-text">📊 Enterprise DQ & Maturity Platform</h1>',
+                unsafe_allow_html=True)
+    st.markdown("**One integrated platform** for Data Quality validation and DAMA Maturity assessment.")
+    st.divider()
 
-    c1, c2, c3 = st.columns(3)
-    cards = [
-        (c1, UNIQU_PURPLE, "🔍 Step 1", "DQ Assessment",
-         "Upload data & rules → validate → get DQ score per column & dimension"),
-        (c2, UNIQU_MAGENTA, "🔗 Step 2", "Auto-Populate",
-         "DQ score maps to a maturity level and pre-fills the Data Quality dimension"),
-        (c3, UNIQU_PURPLE, "📈 Step 3", "Maturity Report",
-         "Complete questionnaire → Download slide PDF + Excel"),
-    ]
-    for col, clr, title, subtitle, body in cards:
-        with col:
-            st.markdown(
-                f'<div style="background:#fff;border:2px solid {clr};'
-                f'border-radius:12px;padding:20px;min-height:160px">'
-                f'<h3 style="color:{clr};margin:0 0 4px 0">{title}</h3>'
-                f'<b>{subtitle}</b><br><br>{body}</div>',
-                unsafe_allow_html=True,
-            )
+    c1, c2 = st.columns(2)
 
-    st.markdown("---")
-
-    # DQ result banner
-    if st.session_state.dq_score is not None:
-        sc  = st.session_state.dq_score
-        lvl = dq_score_to_maturity_level(sc)
-        bc  = "#22c55e" if sc >= 80 else ("#f59e0b" if sc >= 60 else "#ef4444")
+    with c1:
         st.markdown(
-            f'<div style="background:#fff;border-left:6px solid {bc};'
-            f'border-radius:8px;padding:14px 20px;margin-bottom:16px">'
-            f'✅ <b>DQ Assessment Complete</b> — '
-            f'Score: <span style="color:{UNIQU_PURPLE};font-size:1.2em;'
-            f'font-weight:700">{sc:.1f}%</span>'
-            f' → Maturity Level: '
-            f'<span style="color:{UNIQU_MAGENTA};font-weight:700">{lvl}</span>'
-            f' &nbsp;|&nbsp; Object: '
-            f'<b>{st.session_state.dq_object_name}</b></div>',
-            unsafe_allow_html=True,
+            '<div class="step-card">'
+            '<h2>🔍 DQ Assessment</h2>'
+            '<p>Upload data + rulebook → get DQ score, dimension breakdown, '
+            'column annexures, and automated maturity mapping.</p></div>',
+            unsafe_allow_html=True
         )
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("Go to DQ Assessment →", use_container_width=True):
+            st.session_state["page"] = "dq"
+            st.rerun()
 
-    b1, b2 = st.columns(2)
-    with b1:
-        if st.button("🔍 Start DQ Assessment", type="primary",
-                     use_container_width=True):
-            st.session_state.page = "dq"; st.rerun()
-    with b2:
-        if st.button("📈 Go to Maturity Assessment",
-                     use_container_width=True):
-            st.session_state.page = "maturity"; st.rerun()
+    with c2:
+        st.markdown(
+            '<div class="step-card">'
+            '<h2>📈 Maturity Assessment</h2>'
+            '<p>Structured DAMA questionnaire → Slide-style visuals + PDF + '
+            'Excel. Optionally auto-populate from DQ score.</p></div>',
+            unsafe_allow_html=True
+        )
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("Go to Maturity Assessment →", use_container_width=True):
+            st.session_state["page"] = "maturity"
+            st.rerun()
 
-    st.markdown("---")
-    st.markdown("#### DQ Score → Maturity Level Mapping")
-    st.dataframe(
-        pd.DataFrame([
-            {"DQ Score Range": "95% – 100%", "Maturity Level": "⭐ Optimised",
-             "Description": "Continuous improvement, proactive governance"},
-            {"DQ Score Range": "80% – 94%",  "Maturity Level": "✅ Managed",
-             "Description": "Monitored, measured, formalized roles"},
-            {"DQ Score Range": "60% – 79%",  "Maturity Level": "🔵 Defined",
-             "Description": "Standardized and consistently followed"},
-            {"DQ Score Range": "40% – 59%",  "Maturity Level": "🟡 Repeatable",
-             "Description": "Some processes defined but inconsistent"},
-            {"DQ Score Range": "0%  – 39%",  "Maturity Level": "🔴 Adhoc",
-             "Description": "Unstructured, reactive, varies widely"},
-        ]),
-        use_container_width=True,
-        hide_index=True,
-    )
+    st.divider()
+    st.markdown("### ✨ Key Features")
+    st.markdown("""
+    - **DQ Engine**: Rules-driven validation with comprehensive dimension analysis
+    - **Maturity Assessment**: DAMA-aligned questionnaire with automatic scoring
+    - **Integrated Workflow**: DQ score auto-maps to maturity level
+    - **Professional Outputs**: PDF reports + Excel workbooks + slide visuals
+    """)
+
+    st.divider()
+    st.markdown('<p class="text-center">Select an assessment above to begin.</p>',
+                unsafe_allow_html=True)
 
 
 # ══════════════════════════════════════════════════════════════════════════
-#  PAGE 2 – DQ ASSESSMENT
+#  PAGE: DQ ASSESSMENT
 # ══════════════════════════════════════════════════════════════════════════
 def page_dq():
-    if st.button("🏠 Home"):
-        st.session_state.page = "home"; st.rerun()
+    with st.sidebar:
+        st.markdown("### 🧭 Navigation")
+        if st.button("← Back to Home", use_container_width=True):
+            st.session_state["page"] = "home"
+            st.rerun()
+        st.divider()
+        st.markdown("**Current Page:** DQ Assessment")
 
-    UIComponents.render_header()
-    UIComponents.render_sidebar()
-    st.markdown("---")
-    st.subheader("📤 Upload Files")
+    st.markdown('<h1 class="purple-text">🔍 Data Quality Assessment</h1>',
+                unsafe_allow_html=True)
+    st.caption("Upload master dataset + rules → Generate comprehensive DQ reports")
+    st.divider()
 
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown("**📊 Master Dataset**")
+    # File uploads
+    c1, c2 = st.columns(2)
+    with c1:
         data_file = st.file_uploader(
-            "Upload your data file",
-            type=AppConfig.SUPPORTED_DATA_FORMATS,
-            key="dq_data_upload",
+            "📁 Master Dataset",
+            type=["csv", "xlsx", "xls", "xlsm", "json"],
+            help="Primary data file for validation"
         )
-        object_name = st.session_state.dq_object_name
-        if data_file:
-            object_name = st.text_input(
-                "Master Data Object Name",
-                value=st.session_state.dq_object_name,
-                help="e.g. Customer, Vendor – carried into Maturity Assessment",
-            )
-
-    with col2:
-        st.markdown("**📋 Rules Configuration**")
-        utype = st.radio(
-            "Upload Type",
-            ["Rules Dataset (CSV/Excel)", "JSON Rulebook"],
-            horizontal=True,
+    with c2:
+        rules_file = st.file_uploader(
+            "📋 Rules Configuration",
+            type=["csv", "xlsx", "xls", "json"],
+            help="Rulebook (CSV/Excel) or JSON rulebook"
         )
-        if utype == "Rules Dataset (CSV/Excel)":
-            rules_file = st.file_uploader(
-                "Upload rules file",
-                type=AppConfig.SUPPORTED_RULES_FORMATS,
-                key="dq_rules_csv",
-            )
-        else:
-            rules_file = st.file_uploader(
-                "Upload JSON rulebook",
-                type=["json"],
-                key="dq_rules_json",
-            )
 
-    UIComponents.render_file_format_help()
-    st.markdown("---")
-
-    if not (data_file and rules_file):
-        UIComponents.render_welcome_screen()
-        st.markdown("---")
-        w1, w2, w3 = st.columns(3)
-        with w1: st.success("**Step 1** – DQ Assessment")
-        with w2: st.info("**Step 2** – Auto-Populate Maturity")
-        with w3: st.warning("**Step 3** – Download PDF & Excel")
-        st.markdown("---")
-        UIComponents.render_footer()
+    if not data_file or not rules_file:
+        st.info("👆 Please upload both files to proceed")
         return
 
-    if not st.button("🚀 Run Data Quality Check", type="primary",
-                     use_container_width=True):
+    object_name = st.text_input(
+        "🏷️ Master Data Object Name",
+        value=st.session_state.get("dq_object_name", "Customer"),
+        help="Used in maturity auto-fill"
+    )
+    st.session_state["dq_object_name"] = object_name
+
+    sheet_name = None
+    if data_file.name.endswith((".xlsx", ".xls", ".xlsm")):
+        loader    = FileLoaderService()
+        temp_path = AppConfig.TEMP_DIR / data_file.name
+        temp_path.write_bytes(data_file.getbuffer())
+        sheets    = loader.get_sheet_names(temp_path)
+        if len(sheets) > 1:
+            sheet_name = st.selectbox("📄 Select Sheet", sheets)
+
+    run_btn = st.button("🚀 Run DQ Assessment", type="primary", use_container_width=True)
+    st.divider()
+
+    if not run_btn:
         return
 
     try:
-        clean_temp_directory()
-        pb   = st.progress(0)
-        stxt = st.empty()
+        with st.spinner("Processing..."):
+            loader   = FileLoaderService()
+            rb_build = RulebookBuilderService()
 
-        stxt.text("📂 Saving files…");          pb.progress(5)
-        dp = save_uploaded_file(data_file,  AppConfig.TEMP_DIR)
-        rp = save_uploaded_file(rules_file, AppConfig.TEMP_DIR)
+            # Save files
+            data_path  = save_uploaded_file(data_file, AppConfig.TEMP_DIR)
+            rules_path = save_uploaded_file(rules_file, AppConfig.TEMP_DIR)
 
-        stxt.text("📊 Loading dataset…");        pb.progress(15)
-        loader = FileLoaderService()
-        df     = loader.load_dataframe(dp)
-        cols   = df.columns.tolist()
-        st.info(f"✅ Loaded **{len(df):,}** records · **{len(cols)}** columns")
+            # Load data
+            df_master = loader.load_dataframe(data_path, sheet_name=sheet_name)
+            st.success(f"✅ Loaded {len(df_master):,} records × {len(df_master.columns)} columns")
 
-        stxt.text("🔧 Building rulebook…");      pb.progress(30)
-        rb = RulebookBuilderService()
-        if utype == "JSON Rulebook":
-            rulebook = rb.load_json_rulebook(rp)
-        else:
-            rulebook = rb.build_from_rules_dataset(
-                loader.load_dataframe(rp), cols)
+            # Build rulebook
+            if rules_file.name.lower().endswith(".json"):
+                rulebook = rb_build.load_json_rulebook(rules_path)
+            else:
+                df_rules = loader.load_dataframe(rules_path)
+                rulebook = rb_build.build_from_rules_dataset(df_rules, list(df_master.columns))
 
-        m1, m2, m3, m4 = st.columns(4)
-        m1.metric("📊 Records",  f"{len(df):,}")
-        m2.metric("📋 Columns",  len(cols))
-        m3.metric("⚙️ Rules",    len(rulebook.get("rules", [])))
-        m4.metric("🎯 Targets",  len({
-            r.get("column") or "+".join(r.get("columns", []))
-            for r in rulebook["rules"]
-        }))
+            st.success(f"✅ Rulebook: {len(rulebook['rules'])} rules")
 
-        stxt.text("✅ Executing rules…");        pb.progress(50)
-        exe    = RuleExecutorEngine(df, rulebook)
-        res    = exe.execute_all_rules()
-        combos = exe.get_combination_duplicates()
+            # Execute rules
+            executor = RuleExecutorEngine(df_master, rulebook)
+            results  = executor.execute_all_rules()
 
-        stxt.text("📊 Calculating scores…");     pb.progress(70)
-        svc      = ScoringService()
-        overall  = svc.calculate_overall_score(res)
-        col_sc   = svc.calculate_column_scores(res, cols)
-        dim_sc   = svc.calculate_dimension_scores(res)
+            # Scoring
+            scorer       = ScoringService()
+            overall      = scorer.calculate_overall_score(results)
+            col_scores   = scorer.calculate_column_scores(results, list(df_master.columns))
+            dim_scores   = scorer.calculate_dimension_scores(results)
 
-        stxt.text("💾 Generating Excel…");       pb.progress(85)
-        rgen = ExcelReportGenerator(
-            results_df=res, rulebook=rulebook, all_columns=cols,
-            column_scores=col_sc, overall_score=overall,
-            dimension_scores=dim_sc, duplicate_combinations=combos,
-        )
-        out_path = rgen.generate_report(AppConfig.OUTPUT_DIR)
-        rb_path  = rgen.save_rulebook_json(AppConfig.OUTPUT_DIR, rulebook)
-        pb.progress(100); stxt.text("✅ Complete!")
+            # Excel report
+            ts      = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            rg      = ExcelReportGenerator()
+            xl_path = rg.generate_report(
+                results_df=results,
+                overall_score=overall,
+                column_scores=col_scores,
+                dimension_scores=dim_scores,
+                rulebook=rulebook,
+                master_data_columns=list(df_master.columns),
+                output_filename=f"DQ_Report_{object_name}_{ts}.xlsx"
+            )
 
-        # ── Persist for Maturity ───────────────────────────────
-        st.session_state.dq_score       = overall
-        st.session_state.dq_dim_scores  = dim_sc
-        st.session_state.dq_results_df  = res
-        st.session_state.dq_object_name = object_name or "Customer"
-        st.session_state.dq_excel_path  = out_path
-        # Pre-set maturity object
-        st.session_state.mat_objects = (
-            [object_name] if object_name else DEFAULT_MASTER_OBJECTS[:]
-        )
-        # Autofill DQ dimension immediately
-        autofill_dq_dimension(overall)
+            # Save to session
+            st.session_state["dq_score"]      = overall
+            st.session_state["dq_dim_scores"] = dim_scores
+            st.session_state["dq_results_df"] = results
+            st.session_state["dq_excel_path"] = xl_path
 
-        st.success("✅ Data Quality Check Completed Successfully!")
-        st.markdown("---")
-
-        # ── Visual dashboard ───────────────────────────────────
-        st.subheader("📊 DQ Results Dashboard")
-        g1, g2 = st.columns([1, 2])
-        with g1:
-            st.image(_gauge_png(overall), use_container_width=True)
-        with g2:
-            if dim_sc:
-                bar = _dim_bar_png(dim_sc)
-                if bar:
-                    st.image(bar, use_container_width=True)
-
-        st.markdown("---")
-        UIComponents.render_results_dashboard(overall, res, col_sc, dim_sc)
-        st.markdown("---")
-
-        # Annexure info
-        a1, a2, a3 = st.columns(3)
-        with a1:
-            st.info("**🔍 Uniqueness Issues**\n"
-                    "Duplicate & combination duplicate records")
-        with a2:
-            st.info("**📝 Completeness Issues**\n"
-                    "Null / missing value records")
-        with a3:
-            st.info("**📐 Standardization Issues**\n"
-                    "Format & pattern violation records")
-        st.markdown("---")
-
-        UIComponents.render_download_section(out_path, rb_path, len(cols) + 3)
-        st.markdown("---")
-        UIComponents.render_detailed_views(rulebook, res, col_sc, dim_sc)
-
-        # ── Continue to Maturity ───────────────────────────────
-        st.markdown("---")
-        st.subheader("📈 Continue to Data Maturity Assessment")
-        lvl = dq_score_to_maturity_level(overall)
-        st.markdown(
-            f'<div style="background:{UNIQU_LAVENDER};border-left:5px solid '
-            f'{UNIQU_PURPLE};border-radius:8px;padding:14px 20px">'
-            f'🔗 DQ Score <b>{overall:.1f}%</b> has been mapped to maturity level '
-            f'<b style="color:{UNIQU_PURPLE}">{lvl}</b>. '
-            f'The <i>Data Quality</i> dimension is already '
-            f'auto-filled. Click below to proceed.</div>',
-            unsafe_allow_html=True,
-        )
-        st.markdown("")
-        if st.button("📈 Continue to Maturity Assessment →",
-                     type="primary", use_container_width=True):
-            st.session_state.page = "maturity"
-            st.rerun()
+            st.success("✅ DQ Assessment Complete!")
 
     except Exception as e:
         st.error(f"❌ Error: {e}")
-        with st.expander("🔍 Full traceback"):
+        with st.expander("🔍 Detailed Error"):
             st.code(traceback.format_exc())
+        return
 
+    # ═══════════════════════════════════════════════════════════
+    # RESULTS DISPLAY
+    # ═══════════════════════════════════════════════════════════
     st.markdown("---")
-    UIComponents.render_footer()
+    st.markdown("### 📊 DQ Results")
+
+    # Gauge + dimension bars
+    g1, g2 = st.columns([1, 2])
+    with g1:
+        gauge_img = _gauge_png(overall)
+        st.image(gauge_img, use_container_width=True)
+    with g2:
+        if dim_scores:
+            dim_img = _dim_bar_png(dim_scores)
+            if dim_img:
+                st.image(dim_img, use_container_width=True)
+
+    st.divider()
+
+    # Metrics
+    clean_count = len(results[results["Count of issues"] == 0])
+    issue_count = len(results) - clean_count
+    pass_cols   = sum(1 for s in col_scores.values() if s == 100)
+
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Overall DQ Score", f"{overall:.1f}%")
+    m2.metric("Clean Records", f"{clean_count:,}")
+    m3.metric("Records with Issues", f"{issue_count:,}")
+    m4.metric("Columns at 100%", f"{pass_cols}/{len(col_scores)}")
+
+    st.divider()
+
+    # Download
+    st.markdown("### 📥 Download Reports")
+    st.download_button(
+        "📊 Download DQ Excel Report",
+        data=open(xl_path, "rb"),
+        file_name=xl_path.name,
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True,
+    )
+
+    st.divider()
+
+    # Preview
+    st.markdown("### 🔍 Results Preview")
+    display_cols = [c for c in results.columns if not c.startswith("_")]
+    issues_df    = results[results["Count of issues"] > 0]
+
+    if len(issues_df) > 0:
+        st.write(f"**Records with Issues: {len(issues_df):,}**")
+        st.dataframe(issues_df[display_cols].head(50), use_container_width=True)
+    else:
+        st.success("🎉 No issues found!")
+        st.dataframe(results[display_cols].head(20), use_container_width=True)
+
+    st.divider()
+
+    # Link to maturity
+    if st.button("📈 Continue to Maturity Assessment →", use_container_width=True):
+        st.session_state["page"] = "maturity"
+        st.rerun()
 
 
 # ══════════════════════════════════════════════════════════════════════════
-#  PAGE 3 – MATURITY ASSESSMENT
+#  PAGE: MATURITY ASSESSMENT
 # ══════════════════════════════════════════════════════════════════════════
-def _do_submit():
-    objects   = st.session_state.mat_objects
-    dims      = st.session_state.mat_dims
-    responses = st.session_state.mat_responses
-    cn        = st.session_state.mat_client or "Client"
-    bm        = float(st.session_state.mat_benchmark)
-    tg        = float(st.session_state.mat_target)
-    lt        = float(st.session_state.mat_low_thr)
-
-    ok, msg = validate_responses(responses, dims, objects)
-    if not ok:
-        st.error(msg); return
-
-    with st.spinner("⚙️ Computing scores and building all reports…"):
-        dim_table, overall = compute_all_scores(objects, dims, responses)
-        detail_tables      = {d: responses[d].copy() for d in dims}
-        exec_score         = (float(np.nanmean(overall.values))
-                              if len(overall) else 0.0)
-
-        # Per-dimension raw averages
-        raw = {
-            dim: float(np.nanmean(dim_table.loc[dim].values))
-            for dim in dims
-        }
-        for d in MATURITY_DIMS:
-            if d not in raw:
-                raw[d] = np.nan
-
-        # Display labels for the slide's right-panel table
-        domain_display = {
-            "Data Governance":
-                raw.get("Data Governance", np.nan),
-            "Data Quality":
-                raw.get("Data Quality", np.nan),
-            "Data Integration and\nInteroperability":
-                raw.get("Data Integration & Interoperability", np.nan),
-        }
-
-        dq_score   = st.session_state.dq_score
-        dq_dim_sc  = st.session_state.dq_dim_scores
-
-        # ── Build all output artefacts ─────────────────────────
-        slide_png = render_slide_png(
-            client_name=cn,
-            domain_scores=domain_display,
-            exec_score=exec_score if np.isfinite(exec_score) else 0.0,
-            benchmark=bm,
-            target=tg,
-        )
-
-        mat_excel_bytes = to_excel_bytes(
-            dim_table, overall, detail_tables, lt, objects
-        )
-
-        combined_excel_bytes = _combined_excel(
-            dq_score, dq_dim_sc,
-            dim_table, overall, detail_tables, lt, objects,
-        )
-
-        pdf_bytes = _combined_pdf(
-            client_name=cn,
-            slide_png_bytes=slide_png,
-            dim_table=dim_table.round(2),
-            overall=overall.round(2),
-            detail_tables=detail_tables,
-            dq_score=dq_score,
-            dq_dim_scores=dq_dim_sc,
-        )
-
-    ts = datetime.datetime.now().strftime("%Y%m%d_%H%M")
-    st.session_state.mat_payload = {
-        "dim_table":      dim_table,
-        "overall":        overall,
-        "slide_png":      slide_png,
-        "mat_excel":      mat_excel_bytes,
-        "combined_excel": combined_excel_bytes,
-        "pdf_bytes":      pdf_bytes,
-        "exec_score":     exec_score,
-        "client_name":    cn,
-        "ts":             ts,
-    }
-    st.session_state.mat_submitted = True
-    st.rerun()
-
-
 def page_maturity():
-    dq_score = st.session_state.dq_score
-    disabled = st.session_state.mat_submitted
-
-    # ── Sidebar ───────────────────────────────────────────────
     with st.sidebar:
-        st.header("⚙️ Configuration")
-
-        st.session_state.mat_client = st.text_input(
-            "Client Name",
-            value=st.session_state.mat_client,
-            placeholder="Organisation name",
-            disabled=disabled,
-        )
-
-        all_opts = list(dict.fromkeys(
-            DEFAULT_MASTER_OBJECTS + st.session_state.mat_objects
-        ))
-        st.session_state.mat_objects = st.multiselect(
-            "Master Data Objects",
-            options=all_opts,
-            default=st.session_state.mat_objects,
-            disabled=disabled,
-        )
-
-        st.session_state.mat_dims = st.multiselect(
-            "Maturity Dimensions",
-            options=MATURITY_DIMS,
-            default=st.session_state.mat_dims,
-            disabled=disabled,
-        )
+        st.markdown("### 🧭 Navigation")
+        if st.button("← Back to Home", use_container_width=True):
+            st.session_state["page"] = "home"
+            st.rerun()
+        st.divider()
+        st.markdown("**Current Page:** Maturity Assessment")
 
         st.divider()
-        st.header("📊 Scoring")
-        st.session_state.mat_low_thr = st.slider(
-            "Exception threshold (≤)",
-            1.0, 5.0, float(st.session_state.mat_low_thr), 0.5,
-            disabled=disabled,
-        )
+        st.markdown("### ⚙️ Configuration")
+
+        cn = st.text_input("🏢 Client Name", value=st.session_state.get("mat_client", ""))
+        st.session_state["mat_client"] = cn
+
+        st.markdown("**Master Data Objects**")
+        new_obj = st.text_input("Add new object:", key="mat_new_obj")
+        if st.button("➕ Add Object", use_container_width=True) and new_obj.strip():
+            if new_obj not in st.session_state.mat_objects:
+                st.session_state.mat_objects.append(new_obj.strip())
+                sync_response_tables()
+                st.rerun()
+
+        objs_list = st.session_state.mat_objects[:]
+        for o in objs_list:
+            if st.button(f"❌ {o}", key=f"mat_rm_{o}"):
+                st.session_state.mat_objects.remove(o)
+                sync_response_tables()
+                st.rerun()
 
         st.divider()
-        st.header("🎯 Benchmark / Target")
-        st.session_state.mat_benchmark = st.number_input(
-            "Industry Benchmark", 1.0, 5.0,
-            float(st.session_state.mat_benchmark), 0.1,
-            disabled=disabled,
+        st.markdown("**Settings**")
+        st.session_state["mat_benchmark"] = st.slider(
+            "Benchmark (1-5)", 1.0, 5.0, st.session_state.get("mat_benchmark", 3.0), 0.1
         )
-        st.session_state.mat_target = st.number_input(
-            "Target", 1.0, 5.0,
-            float(st.session_state.mat_target), 0.1,
-            disabled=disabled,
+        st.session_state["mat_target"] = st.slider(
+            "Target (1-5)", 1.0, 5.0, st.session_state.get("mat_target", 3.0), 0.1
+        )
+        st.session_state["mat_low_thr"] = st.slider(
+            "Exception Threshold", 1.0, 5.0, st.session_state.get("mat_low_thr", 2.0), 0.1
         )
 
-        st.divider()
-        if st.button("🔍 Back to DQ Assessment"):
-            st.session_state.page = "dq"; st.rerun()
-        if st.button("🏠 Home"):
-            st.session_state.page = "home"; st.rerun()
-
-    # Guards
-    if not st.session_state.mat_objects or not st.session_state.mat_dims:
-        st.info("Select at least one Master Object and "
-                "Dimension in the sidebar.")
-        st.stop()
-
+    # Ensure tables are in sync
     sync_response_tables()
 
-    # ════════════════════════════════════════════════════════
-    # REPORT VIEW  (after submit)
-    # ════════════════════════════════════════════════════════
-    if st.session_state.mat_submitted:
-        p  = st.session_state.mat_payload
-        cn = p["client_name"]
-        ts = p["ts"]
+    dq_score = st.session_state.get("dq_score")
+    if dq_score is not None:
+        autofill_dq_dimension(dq_score)
 
-        st.title("📈 Data Maturity Assessment Report")
+    # ═══════════════════════════════════════════════════════════
+    # SUBMIT HANDLER
+    # ═══════════════════════════════════════════════════════════
+    def _do_submit():
+        ok, msg = validate_responses(
+            st.session_state.mat_responses,
+            st.session_state.mat_dims,
+            st.session_state.mat_objects,
+        )
+        if not ok:
+            st.error(f"Validation failed: {msg}")
+            return
 
-        # DQ banner
+        dim_table, overall = compute_all_scores(
+            st.session_state.mat_objects,
+            st.session_state.mat_dims,
+            st.session_state.mat_responses,
+        )
+
+        # Slide visual
+        cn        = st.session_state["mat_client"] or "Client"
+        dim_vals  = {dim: float(np.nanmean(dim_table.loc[dim].values))
+                     for dim in dim_table.index}
+        exec_sc   = float(np.nanmean(overall.values))
+        bench     = st.session_state.get("mat_benchmark", 3.0)
+        targ      = st.session_state.get("mat_target", 3.0)
+        slide_png = render_slide_png(cn, dim_vals, exec_sc, bench, targ)
+
+        # PDF
+        pdf_bytes = build_pdf_bytes(
+            client_name=cn,
+            slide_png=slide_png,
+            dim_table=dim_table,
+            overall=overall,
+            detail_tables=st.session_state.mat_responses,
+            dq_score=dq_score,
+        )
+
+        # Maturity Excel
+        low_thr      = st.session_state.get("mat_low_thr", 2.0)
+        mat_excel    = to_excel_bytes(
+            dim_table, overall, st.session_state.mat_responses,
+            low_thr, st.session_state.mat_objects
+        )
+
+        # Combined Excel (DQ + Maturity)
+        if dq_score is not None and st.session_state.get("dq_results_df") is not None:
+            from openpyxl import Workbook, load_workbook
+            from io import BytesIO as BIO
+
+            # Load maturity wb
+            wb_mat = load_workbook(BIO(mat_excel))
+
+            # DQ results
+            dq_results = st.session_state["dq_results_df"]
+            display_c  = [c for c in dq_results.columns if not c.startswith("_")]
+            ws_dq      = wb_mat.create_sheet("DQ - Results", 0)
+            for r_idx, row in enumerate(
+                [display_c] + dq_results[display_c].head(1000).values.tolist(), start=1
+            ):
+                for c_idx, val in enumerate(row, start=1):
+                    ws_dq.cell(r_idx, c_idx, value=str(val) if val is not None else "")
+
+            # DQ dimension scores
+            dim_sc = st.session_state.get("dq_dim_scores")
+            if dim_sc:
+                ws_dim = wb_mat.create_sheet("DQ - Dimension Scores", 1)
+                ws_dim.append(["Dimension", "DQ Score (%)"])
+                for dim, sc in dim_sc.items():
+                    ws_dim.append([dim, sc])
+
+            out = BIO()
+            wb_mat.save(out)
+            combined_excel = out.getvalue()
+        else:
+            combined_excel = mat_excel
+
+        st.session_state["mat_submitted"] = True
+        st.session_state["mat_payload"]   = {
+            "slide_png":       slide_png,
+            "dim_table":       dim_table,
+            "overall":         overall,
+            "pdf_bytes":       pdf_bytes,
+            "mat_excel":       mat_excel,
+            "combined_excel":  combined_excel,
+        }
+        st.rerun()
+
+    # ═══════════════════════════════════════════════════════════
+    # RESULTS VIEW
+    # ═══════════════════════════════════════════════════════════
+    if st.session_state.get("mat_submitted") and st.session_state.get("mat_payload"):
+        p  = st.session_state["mat_payload"]
+        cn = st.session_state.get("mat_client") or "Client"
+        ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        st.markdown('<h1 class="purple-text">✅ Maturity Assessment Complete</h1>',
+                    unsafe_allow_html=True)
+        st.divider()
+
+        # DQ link banner
         if dq_score is not None:
             lvl = dq_score_to_maturity_level(dq_score)
             st.markdown(
-                f'<div style="background:{UNIQU_LAVENDER};border-left:6px solid '
-                f'{UNIQU_PURPLE};border-radius:8px;padding:12px 20px;'
-                f'margin-bottom:16px">'
+                f'<div class="alert-box">'
                 f'🔗 <b>DQ Engine</b> — Score: '
-                f'<span style="color:{UNIQU_PURPLE};font-weight:700;'
-                f'font-size:1.15em">{dq_score:.1f}%</span>'
+                f'<span class="purple-text large-text">{dq_score:.1f}%</span>'
                 f' → Maturity: '
-                f'<span style="color:{UNIQU_MAGENTA};font-weight:700">{lvl}'
-                f'</span> &nbsp;(auto-applied to <i>Data Quality</i> dimension)'
+                f'<span class="magenta-text">{lvl}</span> &nbsp;'
+                f'(auto-applied to <i>Data Quality</i> dimension)'
                 f'</div>',
                 unsafe_allow_html=True,
             )
 
-        # ── Slide image ───────────────────────────────────────
+        # Slide image
         st.markdown("### 📊 Summary Slide")
         st.image(p["slide_png"], use_container_width=True)
         st.divider()
 
-        # ── Dimension + Overall tables ────────────────────────
+        # Dimension + Overall tables
         t1, t2 = st.columns(2)
         with t1:
             st.markdown("#### Dimension-wise Maturity (1–5)")
@@ -871,7 +834,7 @@ def page_maturity():
 
         st.divider()
 
-        # ── Maturity bar chart ────────────────────────────────
+        # Maturity bar chart
         st.markdown("#### Scores by Dimension")
         dim_vals = {
             dim: float(np.nanmean(p["dim_table"].loc[dim].values))
@@ -883,7 +846,7 @@ def page_maturity():
 
         st.divider()
 
-        # ── Downloads ─────────────────────────────────────────
+        # Downloads
         st.markdown("### 📥 Download Reports")
         safe_cn = cn.replace(" ", "_")
 
@@ -891,11 +854,10 @@ def page_maturity():
 
         with d1:
             st.markdown(
-                f'<div style="background:#fff;border:2px solid {UNIQU_PURPLE};'
-                f'border-radius:10px;padding:16px;text-align:center">'
-                f'<h4 style="color:{UNIQU_PURPLE};margin:0">📄 PDF Report</h4>'
-                f'<p style="font-size:.85rem;color:#666;margin:6px 0 12px">Slide visual + '
-                f'DQ summary + dimension tables + detailed responses</p></div>',
+                '<div class="download-card">'
+                '<h4>📄 PDF Report</h4>'
+                '<p>Slide visual + DQ summary + dimension tables + detailed responses</p>'
+                '</div>',
                 unsafe_allow_html=True,
             )
             st.download_button(
@@ -908,11 +870,10 @@ def page_maturity():
 
         with d2:
             st.markdown(
-                f'<div style="background:#fff;border:2px solid {UNIQU_MAGENTA};'
-                f'border-radius:10px;padding:16px;text-align:center">'
-                f'<h4 style="color:{UNIQU_MAGENTA};margin:0">📊 Maturity Excel</h4>'
-                f'<p style="font-size:.85rem;color:#666;margin:6px 0 12px">Dimension scores + '
-                f'overall scores + exception sheets</p></div>',
+                '<div class="download-card magenta">'
+                '<h4>📊 Maturity Excel</h4>'
+                '<p>Dimension scores + overall scores + exception sheets</p>'
+                '</div>',
                 unsafe_allow_html=True,
             )
             st.download_button(
@@ -925,11 +886,10 @@ def page_maturity():
 
         with d3:
             st.markdown(
-                f'<div style="background:#fff;border:2px solid #7c4dbb;'
-                f'border-radius:10px;padding:16px;text-align:center">'
-                f'<h4 style="color:#7c4dbb;margin:0">🔗 Combined Excel</h4>'
-                f'<p style="font-size:.85rem;color:#666;margin:6px 0 12px">DQ scores + '
-                f'maturity scores + exceptions in one workbook</p></div>',
+                '<div class="download-card accent">'
+                '<h4>🔗 Combined Excel</h4>'
+                '<p>DQ scores + maturity scores + exceptions in one workbook</p>'
+                '</div>',
                 unsafe_allow_html=True,
             )
             st.download_button(
@@ -979,8 +939,7 @@ def page_maturity():
             if dim == "Data Quality" and dq_score is not None:
                 lvl = dq_score_to_maturity_level(dq_score)
                 st.markdown(
-                    f'<div style="background:{UNIQU_LAVENDER};border-radius:6px;'
-                    f'padding:8px 14px;margin-bottom:10px">'
+                    '<div class="info-box">'
                     f'ℹ️ Auto-populated from DQ Score <b>{dq_score:.1f}%</b> → '
                     f'<b>{lvl}</b>.  You may still adjust individual ratings.</div>',
                     unsafe_allow_html=True,
@@ -1020,7 +979,7 @@ def page_maturity():
 # ══════════════════════════════════════════════════════════════════════════
 #  ROUTER
 # ══════════════════════════════════════════════════════════════════════════
-_css()
+load_css()
 _init_state()
 
 {

@@ -1,0 +1,328 @@
+/* ══════════════════════════════════════════════════════════════════════════
+   UNIQUS - DATA QUALITY & MATURITY ASSESSMENT
+   Global Stylesheet
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ──────────────────────────────────────────────────────────────────────────
+   CSS VARIABLES - Brand Colors
+   ────────────────────────────────────────────────────────────────────────── */
+:root {
+    --uniqu-purple: #5b2d90;
+    --uniqu-magenta: #b10f74;
+    --uniqu-lavender: #efe9f7;
+    --uniqu-light-bg: #fbf9fe;
+    --uniqu-text: #222222;
+    --uniqu-grey: #d9d3e6;
+    --uniqu-dark-purple: #4a1f7a;
+    --uniqu-accent: #7c4dbb;
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   GLOBAL STYLES
+   ────────────────────────────────────────────────────────────────────────── */
+.stApp {
+    background: var(--uniqu-light-bg);
+    color: var(--uniqu-text);
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   SIDEBAR STYLES
+   ────────────────────────────────────────────────────────────────────────── */
+section[data-testid="stSidebar"] {
+    background: #fff;
+    border-right: 1px solid var(--uniqu-grey);
+}
+
+section[data-testid="stSidebar"] h1,
+section[data-testid="stSidebar"] h2,
+section[data-testid="stSidebar"] h3 {
+    color: var(--uniqu-purple);
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   TYPOGRAPHY
+   ────────────────────────────────────────────────────────────────────────── */
+h1, h2, h3, h4, h5, h6 {
+    color: var(--uniqu-purple);
+    font-family: "Segoe UI", Arial, sans-serif;
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   BUTTONS
+   ────────────────────────────────────────────────────────────────────────── */
+.stButton > button {
+    background: var(--uniqu-purple);
+    color: #fff;
+    border: 0;
+    border-radius: 10px;
+    padding: 0.55rem 1.1rem;
+    font-weight: 600;
+    transition: all 0.3s ease;
+}
+
+.stButton > button:hover {
+    background: var(--uniqu-magenta);
+    color: #fff;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(91, 45, 144, 0.3);
+}
+
+button[kind="primary"] {
+    background: var(--uniqu-purple) !important;
+}
+
+button[kind="primary"]:hover {
+    background: var(--uniqu-magenta) !important;
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   DATA FRAMES & TABLES
+   ────────────────────────────────────────────────────────────────────────── */
+div[data-testid="stDataFrame"] {
+    border: 1px solid var(--uniqu-grey);
+    border-radius: 10px;
+    background: #fff;
+    padding: 6px;
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   CUSTOM CARDS & COMPONENTS
+   ────────────────────────────────────────────────────────────────────────── */
+.step-card {
+    background: #fff;
+    border-radius: 12px;
+    padding: 20px;
+    text-align: center;
+    height: 100%;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.metric-card {
+    background: #fff;
+    border: 2px solid var(--uniqu-purple);
+    border-radius: 10px;
+    padding: 20px;
+    text-align: center;
+    transition: all 0.3s ease;
+}
+
+.metric-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 6px 20px rgba(91, 45, 144, 0.2);
+}
+
+.info-box {
+    background: var(--uniqu-lavender);
+    border-radius: 6px;
+    padding: 8px 14px;
+    margin-bottom: 10px;
+}
+
+.alert-box {
+    background: #fff;
+    border: 2px solid var(--uniqu-purple);
+    border-radius: 8px;
+    padding: 12px 20px;
+    margin-bottom: 16px;
+}
+
+.download-card {
+    background: #fff;
+    border: 2px solid var(--uniqu-purple);
+    border-radius: 10px;
+    padding: 16px;
+    text-align: center;
+}
+
+.download-card h4 {
+    color: var(--uniqu-purple);
+    margin: 0;
+}
+
+.download-card p {
+    font-size: 0.85rem;
+    color: #666;
+    margin: 6px 0 12px;
+}
+
+.download-card.magenta {
+    border-color: var(--uniqu-magenta);
+}
+
+.download-card.magenta h4 {
+    color: var(--uniqu-magenta);
+}
+
+.download-card.accent {
+    border-color: var(--uniqu-accent);
+}
+
+.download-card.accent h4 {
+    color: var(--uniqu-accent);
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   NAVIGATION BUTTONS
+   ────────────────────────────────────────────────────────────────────────── */
+.nav-button {
+    display: inline-block;
+    background: var(--uniqu-purple);
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    padding: 0.6rem 1.2rem;
+    font-weight: 600;
+    text-decoration: none;
+    transition: all 0.3s ease;
+}
+
+.nav-button:hover {
+    background: var(--uniqu-magenta);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(91, 45, 144, 0.3);
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   EXPANDER STYLES
+   ────────────────────────────────────────────────────────────────────────── */
+.streamlit-expanderHeader {
+    background: var(--uniqu-lavender);
+    border-radius: 8px;
+    font-weight: 600;
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   FILE UPLOADER
+   ────────────────────────────────────────────────────────────────────────── */
+section[data-testid="stFileUploader"] {
+    background: #fff;
+    border: 2px dashed var(--uniqu-grey);
+    border-radius: 10px;
+    padding: 20px;
+}
+
+section[data-testid="stFileUploader"]:hover {
+    border-color: var(--uniqu-purple);
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   TABS
+   ────────────────────────────────────────────────────────────────────────── */
+.stTabs [data-baseweb="tab-list"] {
+    gap: 8px;
+}
+
+.stTabs [data-baseweb="tab"] {
+    background: #fff;
+    border-radius: 8px 8px 0 0;
+    padding: 10px 20px;
+    font-weight: 600;
+}
+
+.stTabs [aria-selected="true"] {
+    background: var(--uniqu-purple);
+    color: #fff;
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   METRICS
+   ────────────────────────────────────────────────────────────────────────── */
+div[data-testid="stMetricValue"] {
+    color: var(--uniqu-purple);
+    font-weight: 700;
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   ALERTS & MESSAGES
+   ────────────────────────────────────────────────────────────────────────── */
+.stAlert {
+    border-radius: 10px;
+}
+
+.stSuccess {
+    background: #d4edda;
+    border: 1px solid #c3e6cb;
+}
+
+.stInfo {
+    background: var(--uniqu-lavender);
+    border: 1px solid var(--uniqu-grey);
+}
+
+.stWarning {
+    background: #fff3cd;
+    border: 1px solid #ffeaa7;
+}
+
+.stError {
+    background: #f8d7da;
+    border: 1px solid #f5c6cb;
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   CUSTOM TEXT STYLES
+   ────────────────────────────────────────────────────────────────────────── */
+.purple-text {
+    color: var(--uniqu-purple);
+    font-weight: 700;
+}
+
+.magenta-text {
+    color: var(--uniqu-magenta);
+    font-weight: 700;
+}
+
+.large-text {
+    font-size: 1.15em;
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   SPINNER / LOADING
+   ────────────────────────────────────────────────────────────────────────── */
+.stSpinner > div {
+    border-top-color: var(--uniqu-purple) !important;
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   RESPONSIVE DESIGN
+   ────────────────────────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+    .step-card {
+        margin-bottom: 16px;
+    }
+    
+    .metric-card {
+        margin-bottom: 12px;
+    }
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   UTILITY CLASSES
+   ────────────────────────────────────────────────────────────────────────── */
+.text-center {
+    text-align: center;
+}
+
+.margin-top-1 {
+    margin-top: 1rem;
+}
+
+.margin-bottom-1 {
+    margin-bottom: 1rem;
+}
+
+.padding-1 {
+    padding: 1rem;
+}
+
+.shadow-sm {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.shadow-md {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.shadow-lg {
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+}

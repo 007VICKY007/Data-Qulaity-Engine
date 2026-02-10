@@ -1,15 +1,3 @@
-"""
-DataMaturity/helpers.py
-=======================
-All helper functions for the Data Maturity Assessment:
-  - Session state initialisation
-  - Response table management
-  - DQ → Maturity auto-fill
-  - Weighted scoring & overall score computation
-  - Validation
-  - Excel export
-"""
-
 import numpy as np
 import pandas as pd
 from io import BytesIO
