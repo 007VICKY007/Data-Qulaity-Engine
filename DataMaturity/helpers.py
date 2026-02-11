@@ -124,7 +124,8 @@ def compute_weighted_scores(df: pd.DataFrame, objects: list) -> pd.DataFrame:
     """Replace rating strings with numeric scores (1-5) in a copy."""
     s = df.copy()
     for obj in objects:
-        s[obj] = s[obj].map(RATING_TO_SCORE).astype(float)
+        if obj in s.columns:  # Only process if column exists
+            s[obj] = s[obj].map(RATING_TO_SCORE).astype(float)
     return s
 
 
@@ -134,9 +135,12 @@ def _dim_score_series(dim: str, df: pd.DataFrame, objects: list) -> pd.Series:
     w = s["Weight"].astype(float).values
     row = {}
     for obj in objects:
-        vals = s[obj].astype(float).values
-        mask = np.isfinite(vals) & np.isfinite(w) & (w > 0)
-        row[obj] = float(np.average(vals[mask], weights=w[mask])) if mask.sum() > 0 else np.nan
+        if obj in s.columns:  # Only process if column exists
+            vals = s[obj].astype(float).values
+            mask = np.isfinite(vals) & np.isfinite(w) & (w > 0)
+            row[obj] = float(np.average(vals[mask], weights=w[mask])) if mask.sum() > 0 else np.nan
+        else:
+            row[obj] = np.nan
     return pd.Series(row, name=dim)
 
 
@@ -222,16 +226,25 @@ def to_excel_bytes(
             d.insert(0, "Dimension", dim)
             d.to_excel(writer, sheet_name=f"Detail - {dim[:20]}", index=False)
 
+        # Generate exception sheets only for objects that exist in the dataframes
         for dim, df in detail_tables.items():
             s = compute_weighted_scores(df, objects)
-            for obj in objects:
+            
+            # Get the list of objects that actually exist in this dimension's dataframe
+            existing_objects = [obj for obj in objects if obj in s.columns]
+            
+            for obj in existing_objects:
+                # Create filter for exceptions
                 exc = s[s[obj] <= low_thr][
                     ["Question ID", "Section", "Question", "Weight", obj]
                 ].copy()
-                if len(exc):
+                
+                if len(exc) > 0:
+                    # Create safe sheet name (max 31 chars)
+                    sheet_name = f"Exc-{obj[:10]}-{dim[:8]}"[:31]
                     exc.to_excel(
                         writer,
-                        sheet_name=f"Exc-{obj[:10]}-{dim[:8]}"[:31],
+                        sheet_name=sheet_name,
                         index=False,
                     )
 
