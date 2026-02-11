@@ -267,34 +267,37 @@ class UIComponents:
         col1, col2, col3 = st.columns(3)
         
         with col1:
-            st.markdown("""
-            <div class="step-card">
-            <h3>1️⃣ Upload Files</h3>
-            <p>Master dataset (CSV/Excel/JSON)</p>
-            <p>Rules dataset or JSON rulebook</p>
-            <p>Supports multiple formats</p>
-            </div>
-            """, unsafe_allow_html=True)
+            st.markdown(
+                '<div class="step-card">'
+                '<h3>1️⃣ Upload Files</h3>'
+                '<p>Master dataset (CSV/Excel/JSON)</p>'
+                '<p>Rules dataset or JSON rulebook</p>'
+                '<p>Supports multiple formats</p>'
+                '</div>',
+                unsafe_allow_html=True
+            )
         
         with col2:
-            st.markdown("""
-            <div class="step-card">
-            <h3>2️⃣ Generate Rulebook</h3>
-            <p>Automatic rule mapping</p>
-            <p>Dynamic validation logic</p>
-            <p>Zero hardcoded rules</p>
-            </div>
-            """, unsafe_allow_html=True)
+            st.markdown(
+                '<div class="step-card">'
+                '<h3>2️⃣ Generate Rulebook</h3>'
+                '<p>Automatic rule mapping</p>'
+                '<p>Dynamic validation logic</p>'
+                '<p>Zero hardcoded rules</p>'
+                '</div>',
+                unsafe_allow_html=True
+            )
         
         with col3:
-            st.markdown("""
-            <div class="step-card">
-            <h3>3️⃣ Get Results</h3>
-            <p>DQ Score dashboard</p>
-            <p>Column-wise annexures</p>
-            <p>Downloadable reports</p>
-            </div>
-            """, unsafe_allow_html=True)
+            st.markdown(
+                '<div class="step-card">'
+                '<h3>3️⃣ Get Results</h3>'
+                '<p>DQ Score dashboard</p>'
+                '<p>Column-wise annexures</p>'
+                '<p>Downloadable reports</p>'
+                '</div>',
+                unsafe_allow_html=True
+            )
         
         st.markdown("---")
         
@@ -328,9 +331,10 @@ class UIComponents:
     @staticmethod
     def render_footer():
         """Render application footer"""
-        st.markdown("""
-        <div class="text-center margin-top-1">
-        <p class="caption">✔ Enterprise Grade | ✔ 100% Dynamic | ✔ Zero Hardcoded Logic</p>
-        <p class="caption">Powered by """ + AppConfig.APP_TITLE + " v" + AppConfig.VERSION + """</p>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(
+            '<div class="text-center margin-top-1">'
+            '<p class="caption">✔ Enterprise Grade | ✔ 100% Dynamic | ✔ Zero Hardcoded Logic</p>'
+            '<p class="caption">Powered by ' + AppConfig.APP_TITLE + ' v' + AppConfig.VERSION + '</p>'
+            '</div>',
+            unsafe_allow_html=True
+        )

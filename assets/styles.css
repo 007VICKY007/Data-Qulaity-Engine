@@ -1,6 +1,6 @@
 /* ══════════════════════════════════════════════════════════════════════════
    UNIQUS - DATA QUALITY & MATURITY ASSESSMENT
-   Global Stylesheet
+   Global Stylesheet - All Inline CSS Consolidated
    ══════════════════════════════════════════════════════════════════════════ */
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -86,8 +86,40 @@ div[data-testid="stDataFrame"] {
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
-   CUSTOM CARDS & COMPONENTS
+   CUSTOM CARDS & COMPONENTS (from app.py)
    ────────────────────────────────────────────────────────────────────────── */
+.card {
+    background: #fff;
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.card-purple-border {
+    border-top: 3px solid var(--uniqu-purple);
+}
+
+.card-magenta-border {
+    border-top: 3px solid var(--uniqu-magenta);
+}
+
+.card-accent-border {
+    border-top: 3px solid var(--uniqu-accent);
+}
+
+.card-center {
+    text-align: center;
+}
+
+.banner {
+    background: var(--uniqu-lavender);
+    border-left: 5px solid var(--uniqu-purple);
+    border-radius: 8px;
+    padding: 12px 18px;
+    margin-bottom: 14px;
+}
+
 .step-card {
     background: #fff;
     border-radius: 12px;
@@ -276,11 +308,65 @@ div[data-testid="stMetricValue"] {
     font-size: 1.15em;
 }
 
+.accent-text {
+    color: var(--uniqu-accent);
+    font-weight: 700;
+}
+
 /* ──────────────────────────────────────────────────────────────────────────
    SPINNER / LOADING
    ────────────────────────────────────────────────────────────────────────── */
 .stSpinner > div {
     border-top-color: var(--uniqu-purple) !important;
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   HOME PAGE SPECIFIC STYLES
+   ────────────────────────────────────────────────────────────────────────── */
+.home-hero {
+    text-align: center;
+    padding: 2rem 0;
+}
+
+.home-hero h1 {
+    font-size: 2.5rem;
+    margin-bottom: 1rem;
+}
+
+.home-hero p {
+    font-size: 1.1rem;
+    color: #666;
+}
+
+.feature-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1.5rem;
+    margin: 2rem 0;
+}
+
+.feature-card {
+    background: #fff;
+    border-radius: 12px;
+    padding: 1.5rem;
+    text-align: center;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    transition: all 0.3s ease;
+}
+
+.feature-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 6px 20px rgba(91, 45, 144, 0.15);
+}
+
+.feature-card h3 {
+    font-size: 1.2rem;
+    margin-bottom: 0.5rem;
+}
+
+.feature-card p {
+    color: #666;
+    font-size: 0.9rem;
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -293,6 +379,14 @@ div[data-testid="stMetricValue"] {
     
     .metric-card {
         margin-bottom: 12px;
+    }
+    
+    .home-hero h1 {
+        font-size: 2rem;
+    }
+    
+    .feature-grid {
+        grid-template-columns: 1fr;
     }
 }
 
@@ -307,12 +401,24 @@ div[data-testid="stMetricValue"] {
     margin-top: 1rem;
 }
 
+.margin-top-2 {
+    margin-top: 2rem;
+}
+
 .margin-bottom-1 {
     margin-bottom: 1rem;
 }
 
+.margin-bottom-2 {
+    margin-bottom: 2rem;
+}
+
 .padding-1 {
     padding: 1rem;
+}
+
+.padding-2 {
+    padding: 2rem;
 }
 
 .shadow-sm {
@@ -325,4 +431,77 @@ div[data-testid="stMetricValue"] {
 
 .shadow-lg {
     box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   DQ ASSESSMENT PAGE SPECIFIC
+   ────────────────────────────────────────────────────────────────────────── */
+.dq-summary-card {
+    background: #fff;
+    border-radius: 12px;
+    padding: 1.5rem;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.dq-metric-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid var(--uniqu-grey);
+}
+
+.dq-metric-row:last-child {
+    border-bottom: none;
+}
+
+.dq-metric-label {
+    font-weight: 600;
+    color: var(--uniqu-text);
+}
+
+.dq-metric-value {
+    font-weight: 700;
+    color: var(--uniqu-purple);
+    font-size: 1.1rem;
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   MATURITY ASSESSMENT PAGE SPECIFIC
+   ────────────────────────────────────────────────────────────────────────── */
+.maturity-intro {
+    background: var(--uniqu-lavender);
+    border-radius: 10px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.maturity-dimension-header {
+    background: linear-gradient(135deg, var(--uniqu-purple), var(--uniqu-magenta));
+    color: #fff;
+    padding: 1rem;
+    border-radius: 8px;
+    margin-bottom: 1rem;
+}
+
+.maturity-score-badge {
+    display: inline-block;
+    background: var(--uniqu-purple);
+    color: #fff;
+    padding: 0.3rem 0.8rem;
+    border-radius: 20px;
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+.maturity-score-badge.high {
+    background: #22c55e;
+}
+
+.maturity-score-badge.medium {
+    background: #f59e0b;
+}
+
+.maturity-score-badge.low {
+    background: #ef4444;
 }
