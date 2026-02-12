@@ -1,3 +1,15 @@
+"""
+app.py - Enterprise DQ & Maturity Platform (Combined)
+======================================================
+Complete Streamlit application integrating:
+  - Data Quality Assessment
+  - Data Maturity Assessment
+  - Policy Hub
+  - Case Management System
+
+All with professional Excel report generation.
+"""
+
 # ── stdlib ─────────────────────────────────────────────────────────────────
 import traceback
 import datetime
@@ -438,7 +450,7 @@ def page_home():
 
 
 # ══════════════════════════════════════════════════════════════════════════
-#  PAGE: DQ ASSESSMENT - Enhanced DQ Page with Fixed Excel Generation
+#  PAGE: DQ ASSESSMENT - Enhanced with Fixed Excel Generation
 # ══════════════════════════════════════════════════════════════════════════
 def page_dq():
     # Enhanced Sidebar Navigation
@@ -590,13 +602,8 @@ def page_dq():
             duplicate_combinations=combos,
         )
         
-        # Generate report - without filename parameter
+        # Generate report
         rgen.generate_report(AppConfig.OUTPUT_DIR)
-        
-        # Rename the generated file to our timestamped filename
-        default_report_path = AppConfig.OUTPUT_DIR / "DQ_Assessment_Report.xlsx"
-        if default_report_path.exists():
-            default_report_path.rename(xl_path)
         
         # Save rulebook JSON
         rb_path = rgen.save_rulebook_json(AppConfig.OUTPUT_DIR, rulebook)
@@ -639,6 +646,13 @@ def page_dq():
         d1, d2, d3 = st.columns(3)
         
         with d1:
+            # Read the generated file
+            default_report_path = AppConfig.OUTPUT_DIR / "DQ_Assessment_Report.xlsx"
+            
+            # Check if default was created, if so rename it
+            if default_report_path.exists() and not xl_path.exists():
+                default_report_path.rename(xl_path)
+            
             if xl_path.exists():
                 with open(xl_path, "rb") as f:
                     st.download_button(
@@ -649,10 +663,10 @@ def page_dq():
                         use_container_width=True,
                     )
             else:
-                st.error("Excel report not found")
+                st.error("❌ Excel report not found")
         
         with d2:
-            if rb_path and rb_path.exists():
+            if rb_path and Path(rb_path).exists():
                 with open(rb_path, "rb") as f:
                     rb_filename = get_timestamp_filename("Rulebook", "json")
                     st.download_button(

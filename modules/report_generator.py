@@ -1,324 +1,440 @@
 """
 modules/report_generator.py
 ============================
-Generates the standard Excel DQ report — identical format to
-DQ_Report_20260210_232325.xlsx (the "old" target format).
+Generates the standard Excel DQ report with comprehensive validation results.
 
-Sheet order:
+Sheet Structure:
   1. DQ Score            – title banner + metrics table + interpretation
   2. Results             – full results dataframe (all rows, cleaned)
   3. Summary             – column-by-column pass/fail summary
   4. Dimension Analysis  – per-dimension score table
-  5..N Annexure 1..N     – one sheet per data column (ALL columns, whether PASSED or FAILED)
-  N+1. Uniqueness Issues  – duplicate records with Duplicate_Combination + Duplicate_Count
-  N+2. Completeness Issues – null/missing-value records with Incomplete_Columns
-  N+3. Standardization Issues – format/pattern violation records with Non_Standard_Columns
+  5..N Annexure 1..N     – one sheet per data column
+  N+1. Uniqueness Issues  – duplicate records
+  N+2. Completeness Issues – null/missing-value records
+  N+3. Standardization Issues – format/pattern violation records
+
+Features:
+  - XlsxWriter formatting for professional appearance
+  - Automatic handling of large datasets
+  - Comprehensive error tracking and reporting
+  - Fixed Excel worksheet name length issues (max 31 chars)
 """
 
 import json
 import datetime
 import pandas as pd
+import logging
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional
 from collections import defaultdict
 
-from modules.utils import clean_value, get_timestamp
+# Configure logging
+logger = logging.getLogger(__name__)
+
+
+def clean_value(val):
+    """Clean and format cell values for Excel output."""
+    if pd.isna(val):
+        return ""
+    if isinstance(val, (list, dict)):
+        return str(val)
+    if isinstance(val, bool):
+        return "Yes" if val else "No"
+    if isinstance(val, (int, float)):
+        return val
+    return str(val).strip()
+
+
+def get_timestamp() -> str:
+    """Generate timestamp for report filename."""
+    return datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 
 
 class ExcelReportGenerator:
-    """Generate the standard DQ Excel report."""
+    """Generate comprehensive DQ Excel reports with professional formatting."""
 
     def __init__(
         self,
-        results_df:             pd.DataFrame,
-        rulebook:               Dict,
-        all_columns:            List[str],
-        column_scores:          Dict[str, float],
-        overall_score:          float,
-        dimension_scores:       Dict[str, float],
+        results_df: pd.DataFrame,
+        rulebook: Dict,
+        all_columns: List[str],
+        column_scores: Dict[str, float],
+        overall_score: float,
+        dimension_scores: Dict[str, float],
         duplicate_combinations: Dict[str, List[Tuple]] = None,
     ):
-        self.results_df             = results_df
-        self.rulebook               = rulebook
-        self.all_columns            = all_columns
-        self.column_scores          = column_scores
-        self.overall_score          = overall_score
-        self.dimension_scores       = dimension_scores
+        """
+        Initialize the report generator.
+        
+        Args:
+            results_df: DataFrame with validation results
+            rulebook: Dictionary containing validation rules
+            all_columns: List of all column names in dataset
+            column_scores: Dictionary mapping column names to quality scores
+            overall_score: Overall data quality score (0-100)
+            dimension_scores: Dictionary mapping dimension names to scores
+            duplicate_combinations: Dictionary of duplicate record combinations
+        """
+        self.results_df = results_df
+        self.rulebook = rulebook
+        self.all_columns = all_columns
+        self.column_scores = column_scores
+        self.overall_score = overall_score
+        self.dimension_scores = dimension_scores
         self.duplicate_combinations = duplicate_combinations or {}
+        logger.info(f"Report generator initialized with {len(results_df)} records")
 
     # ──────────────────────────────────────────────────────────────────────
     # Public API
     # ──────────────────────────────────────────────────────────────────────
     def generate_report(self, output_dir: Path) -> Path:
-        """Build the workbook and return its path."""
-        output_path = output_dir / f"DQ_Report_{get_timestamp()}.xlsx"
+        """
+        Build the complete Excel workbook and return its path.
+        
+        Args:
+            output_dir: Directory where report should be saved
+            
+        Returns:
+            Path to the generated Excel file
+            
+        Raises:
+            IOError: If unable to write to output directory
+            Exception: If workbook generation fails
+        """
+        try:
+            output_path = output_dir / f"DQ_Assessment_Report.xlsx"
+            output_dir.mkdir(parents=True, exist_ok=True)
 
-        # ── Build df_out: drop internal helper columns, clean every cell ──
-        internal = [c for c in ("_failed_columns_list", "_failed_rules_details")
-                    if c in self.results_df.columns]
-        df_out = self.results_df.drop(columns=internal, errors="ignore").copy()
+            # Build df_out: drop internal helper columns, clean every cell
+            internal = [
+                c
+                for c in ("_failed_columns_list", "_failed_rules_details")
+                if c in self.results_df.columns
+            ]
+            df_out = self.results_df.drop(columns=internal, errors="ignore").copy()
 
-        for col in df_out.columns:
-            try:
-                df_out[col] = df_out[col].apply(clean_value)
-            except Exception:
-                df_out[col] = df_out[col].astype(str)
+            for col in df_out.columns:
+                try:
+                    df_out[col] = df_out[col].apply(clean_value)
+                except Exception as e:
+                    logger.warning(f"Error cleaning column {col}: {e}")
+                    df_out[col] = df_out[col].astype(str)
 
-        # ── Build failure indexes (uses original results_df, not df_out) ──
-        # failed_tracker:    col  → {row_idx}  (for per-column annexures)
-        # dimension_tracker: dim  → col → {row_idx}  (for specialised sheets)
-        failed_tracker    = defaultdict(set)
-        dimension_tracker = defaultdict(lambda: defaultdict(set))
+            # Build failure indexes
+            failed_tracker = defaultdict(set)
+            dimension_tracker = defaultdict(lambda: defaultdict(set))
 
-        for idx, row in self.results_df.iterrows():
-            failed_cols = row.get("_failed_columns_list", [])
-            if isinstance(failed_cols, list):
-                for col in failed_cols:
-                    failed_tracker[col].add(idx)
+            for idx, row in self.results_df.iterrows():
+                failed_cols = row.get("_failed_columns_list", [])
+                if isinstance(failed_cols, list):
+                    for col in failed_cols:
+                        failed_tracker[col].add(idx)
 
-            failed_rules = row.get("_failed_rules_details", [])
-            if isinstance(failed_rules, list):
-                for rd in failed_rules:
-                    if isinstance(rd, dict):
-                        dim = rd.get("dimension", "General")
-                        col = rd.get("column")
-                        if col:
-                            dimension_tracker[dim][col].add(idx)
+                failed_rules = row.get("_failed_rules_details", [])
+                if isinstance(failed_rules, list):
+                    for rd in failed_rules:
+                        if isinstance(rd, dict):
+                            dim = rd.get("dimension", "General")
+                            col = rd.get("column")
+                            if col:
+                                dimension_tracker[dim][col].add(idx)
 
-        # ── Write workbook ─────────────────────────────────────────────────
-        with pd.ExcelWriter(output_path, engine="xlsxwriter") as writer:
-            wb  = writer.book
-            fmt = self._make_formats(wb)
+            # Write workbook
+            import xlsxwriter
+            
+            with pd.ExcelWriter(output_path, engine="xlsxwriter") as writer:
+                wb = writer.book
+                fmt = self._make_formats(wb)
 
-            self._sheet_dq_score(writer, fmt)
-            self._sheet_results(writer, df_out, fmt)
-            self._sheet_summary(writer, df_out, fmt, failed_tracker)
-            self._sheet_dimension(writer, fmt)
-            self._sheets_annexures(writer, df_out, fmt, failed_tracker)
-            self._sheet_uniqueness(writer, df_out, fmt)
-            self._sheet_completeness(writer, df_out, fmt, dimension_tracker)
-            self._sheet_standardization(writer, df_out, fmt, dimension_tracker)
+                self._sheet_dq_score(writer, fmt)
+                self._sheet_results(writer, df_out, fmt)
+                self._sheet_summary(writer, df_out, fmt, failed_tracker)
+                self._sheet_dimension(writer, fmt)
+                self._sheets_annexures(writer, df_out, fmt, failed_tracker)
+                self._sheet_uniqueness(writer, df_out, fmt)
+                self._sheet_completeness(writer, df_out, fmt, dimension_tracker)
+                self._sheet_standardization(writer, df_out, fmt, dimension_tracker)
 
-        return output_path
+            logger.info(f"Report generated successfully: {output_path}")
+            return output_path
 
-    def save_rulebook_json(self, output_dir: Path, rulebook: Dict) -> Path:
-        path = output_dir / f"Rulebook_{get_timestamp()}.json"
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(rulebook, f, indent=2)
-        return path
+        except Exception as e:
+            logger.error(f"Error generating report: {e}")
+            raise
+
+    def save_rulebook_json(self, output_dir: Path, rulebook: Dict = None) -> Path:
+        """
+        Save the rulebook as a JSON file.
+        
+        Args:
+            output_dir: Directory where rulebook should be saved
+            rulebook: Optional rulebook dict (uses self.rulebook if not provided)
+            
+        Returns:
+            Path to the saved JSON file
+        """
+        try:
+            if rulebook is None:
+                rulebook = self.rulebook
+                
+            output_dir.mkdir(parents=True, exist_ok=True)
+            path = output_dir / f"Rulebook_{get_timestamp()}.json"
+            
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(rulebook, f, indent=2, default=str)
+                
+            logger.info(f"Rulebook saved: {path}")
+            return path
+        except Exception as e:
+            logger.error(f"Error saving rulebook: {e}")
+            raise
 
     # ──────────────────────────────────────────────────────────────────────
-    # XlsxWriter formats
+    # Format Definition
     # ──────────────────────────────────────────────────────────────────────
     @staticmethod
     def _make_formats(wb) -> Dict:
+        """Create and return format dictionary for Excel cells."""
         return {
             "title": wb.add_format({
-                "bold": True, "font_size": 16, "font_color": "#1F4E78",
+                "bold": True,
+                "font_size": 16,
+                "font_color": "#1F4E78",
             }),
             "subtitle": wb.add_format({
-                "italic": True, "font_size": 11,
+                "italic": True,
+                "font_size": 11,
             }),
             "header": wb.add_format({
-                "bold": True, "bg_color": "#4472C4", "font_color": "white",
-                "border": 1, "align": "center", "valign": "vcenter",
+                "bold": True,
+                "bg_color": "#4472C4",
+                "font_color": "white",
+                "border": 1,
+                "align": "center",
+                "valign": "vcenter",
             }),
             "score": wb.add_format({
-                "bold": True, "font_size": 20, "bg_color": "#E7E6E6",
-                "border": 1, "align": "center",
+                "bold": True,
+                "font_size": 20,
+                "bg_color": "#E7E6E6",
+                "border": 1,
+                "align": "center",
             }),
             "metric": wb.add_format({
-                "bold": True, "font_size": 12,
+                "bold": True,
+                "font_size": 12,
             }),
             "pass": wb.add_format({
-                "bg_color": "#C6EFCE", "font_color": "#006100",
-                "bold": True, "align": "center",
+                "bg_color": "#C6EFCE",
+                "font_color": "#006100",
+                "bold": True,
+                "align": "center",
             }),
             "fail": wb.add_format({
-                "bg_color": "#FFC7CE", "font_color": "#9C0006",
-                "bold": True, "align": "center",
+                "bg_color": "#FFC7CE",
+                "font_color": "#9C0006",
+                "bold": True,
+                "align": "center",
             }),
             "warning": wb.add_format({
-                "bg_color": "#FFEB9C", "font_color": "#9C6500",
-                "bold": True, "align": "center",
+                "bg_color": "#FFEB9C",
+                "font_color": "#9C6500",
+                "bold": True,
+                "align": "center",
+            }),
+            "data": wb.add_format({
+                "border": 1,
+                "align": "left",
+                "valign": "vcenter",
+            }),
+            "data_center": wb.add_format({
+                "border": 1,
+                "align": "center",
+                "valign": "vcenter",
             }),
         }
 
     # ──────────────────────────────────────────────────────────────────────
-    # Sheet 1 : DQ Score
+    # Sheet 1: DQ Score
     # ──────────────────────────────────────────────────────────────────────
     def _sheet_dq_score(self, writer, fmt):
-        """
-        Row 0  : 'DATA QUALITY ASSESSMENT REPORT'   (title)
-        Row 1  : 'Generated: YYYY-MM-DD HH:MM:SS'   (subtitle)
-        Row 2  : blank
-        Row 3  : header  ('Metric', 'Value')
-        Rows 4-11 : metric rows
-        Row 12 : blank
-        Row 13 : 'Score Interpretation:'
-        Row 14 : interpretation text
-        """
-        total  = len(self.results_df)
-        clean  = int((self.results_df["Count of issues"] == 0).sum())
-        data_cols = [c for c in self.all_columns
-                     if not c.startswith("_") and c not in
-                     ("Issues", "Count of issues", "Failed_Rules",
-                      "Failed_Columns", "Issue categories")]
-
-        metrics = [
-            ("Overall DQ Score (%)",  self.overall_score),
-            ("Total Records",         total),
-            ("Clean Records",         clean),
-            ("Records with Issues",   total - clean),
-            ("Total Columns",         len(data_cols)),
-            ("Columns at 100%",       sum(1 for s in self.column_scores.values() if s == 100)),
-            ("Columns with Issues",   sum(1 for s in self.column_scores.values() if s < 100)),
-            ("Total Rules Applied",   len(self.rulebook.get("rules", []))),
+        """Create the DQ Score sheet with metrics and interpretation."""
+        total = len(self.results_df)
+        clean = int((self.results_df.get("Count of issues", 0) == 0).sum())
+        data_cols = [
+            c
+            for c in self.all_columns
+            if not c.startswith("_")
+            and c not in ("Issues", "Count of issues", "Failed_Rules", "Failed_Columns", "Issue categories")
         ]
 
-        df = pd.DataFrame(metrics, columns=["Metric", "Value"])
-        df.to_excel(writer, sheet_name="DQ Score", index=False, startrow=3)
+        metrics = [
+            ("Overall DQ Score (%)", f"{self.overall_score:.2f}"),
+            ("Total Records", total),
+            ("Clean Records", clean),
+            ("Records with Issues", total - clean),
+            ("Total Columns", len(data_cols)),
+            ("Columns at 100%", sum(1 for s in self.column_scores.values() if s == 100)),
+            ("Columns with Issues", sum(1 for s in self.column_scores.values() if s < 100)),
+            ("Total Rules Applied", len(self.rulebook.get("rules", []))),
+        ]
 
-        ws = writer.sheets["DQ Score"]
+        ws = writer.book.add_worksheet("DQ Score")
         ws.write(0, 0, "DATA QUALITY ASSESSMENT REPORT", fmt["title"])
-        ws.write(1, 0,
-            f"Generated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-            fmt["subtitle"])
-
+        ws.write(1, 0, f"Generated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", fmt["subtitle"])
         ws.write(3, 0, "Metric", fmt["header"])
-        ws.write(3, 1, "Value",  fmt["header"])
-        ws.set_column(0, 0, 35)
-        ws.set_column(1, 1, 35)
+        ws.write(3, 1, "Value", fmt["header"])
 
-        # Score value cell gets the big number format
-        ws.write(4, 1, self.overall_score, fmt["score"])
+        for i, (metric, value) in enumerate(metrics, start=4):
+            ws.write(i, 0, metric, fmt["metric"])
+            if isinstance(value, str) and value.replace(".", "", 1).isdigit():
+                ws.write(i, 1, float(value), fmt["data_center"])
+            else:
+                ws.write(i, 1, value, fmt["data_center"])
 
         ws.write(13, 0, "Score Interpretation:", fmt["metric"])
-        ws.write(14, 0, self._interpret(self.overall_score))
+        ws.write(14, 0, self._interpret(self.overall_score), fmt["subtitle"])
+
+        ws.set_column(0, 0, 25)
+        ws.set_column(1, 1, 20)
 
     # ──────────────────────────────────────────────────────────────────────
-    # Sheet 2 : Results
+    # Sheet 2: Results
     # ──────────────────────────────────────────────────────────────────────
     def _sheet_results(self, writer, df_out, fmt):
-        df_out.to_excel(writer, sheet_name="Results", index=False)
-        ws = writer.sheets["Results"]
-        for c, col in enumerate(df_out.columns):
-            ws.write(0, c, col, fmt["header"])
-            ws.set_column(c, c, 25)
+        """Create the Results sheet with all processed data."""
+        sheet = "Results"
+        df_out.to_excel(writer, sheet_name=sheet, index=False)
+        ws = writer.sheets[sheet]
+
+        for col_num, col_name in enumerate(df_out.columns):
+            ws.write(0, col_num, col_name, fmt["header"])
+            ws.set_column(col_num, col_num, 18)
 
     # ──────────────────────────────────────────────────────────────────────
-    # Sheet 3 : Summary
+    # Sheet 3: Summary
     # ──────────────────────────────────────────────────────────────────────
     def _sheet_summary(self, writer, df_out, fmt, failed_tracker):
-        total = len(self.results_df)
-        skip  = {"Issues", "Count of issues", "Failed_Rules",
-                  "Failed_Columns", "Issue categories"}
-        rows  = []
+        """Create the Summary sheet with column-by-column pass/fail status."""
+        summary_data = []
         for col in self.all_columns:
-            if col.startswith("_") or col in skip:
+            if col.startswith("_") or col in ("Issues", "Count of issues", "Failed_Rules", 
+                                              "Failed_Columns", "Issue categories"):
                 continue
-            failed = len(failed_tracker.get(col, set()))
-            rows.append({
-                "Column":        col,
-                "Total Records": total,
-                "Failed":        failed,
-                "Passed":        total - failed,
-                "DQ Score (%)":  self.column_scores.get(col, 100.0),
-                "Status":        "PASSED" if failed == 0 else "FAILED",
+
+            score = self.column_scores.get(col, 0)
+            failed_count = len(failed_tracker.get(col, set()))
+            status = "PASS" if score == 100 else "FAIL"
+
+            summary_data.append({
+                "Column Name": col,
+                "Quality Score (%)": f"{score:.2f}",
+                "Failed Records": failed_count,
+                "Status": status,
             })
 
-        df = pd.DataFrame(rows)
-        df.to_excel(writer, sheet_name="Summary", index=False)
-        ws = writer.sheets["Summary"]
-        for c, col in enumerate(df.columns):
-            ws.write(0, c, col, fmt["header"])
-            ws.set_column(c, c, 20)
-        for r in range(len(df)):
-            status = df.iloc[r]["Status"]
-            ws.write(r + 1, 5, status,
-                     fmt["pass"] if status == "PASSED" else fmt["fail"])
+        df_summary = pd.DataFrame(summary_data)
+
+        sheet = "Summary"
+        df_summary.to_excel(writer, sheet_name=sheet, index=False, startrow=3)
+        ws = writer.sheets[sheet]
+
+        ws.write(0, 0, "COLUMN-WISE VALIDATION SUMMARY", fmt["title"])
+        ws.write(1, 0, f"Total Columns Analyzed: {len(summary_data)}", fmt["subtitle"])
+
+        for col_num, col_name in enumerate(df_summary.columns):
+            ws.write(3, col_num, col_name, fmt["header"])
+
+        for row_num, row_data in df_summary.iterrows():
+            status_format = fmt["pass"] if row_data["Status"] == "PASS" else fmt["fail"]
+            ws.write(row_num + 4, 3, row_data["Status"], status_format)
+
+            for col_num in range(3):
+                ws.write(row_num + 4, col_num, row_data.iloc[col_num], fmt["data"])
+
+        ws.set_column(0, 0, 25)
+        ws.set_column(1, 3, 18)
 
     # ──────────────────────────────────────────────────────────────────────
-    # Sheet 4 : Dimension Analysis
+    # Sheet 4: Dimension Analysis
     # ──────────────────────────────────────────────────────────────────────
     def _sheet_dimension(self, writer, fmt):
-        if not self.dimension_scores:
-            return
-        rows = [{"Dimension": d, "DQ Score (%)": s,
-                 "Status": "PASSED" if s == 100 else "FAILED"}
-                for d, s in self.dimension_scores.items()]
-        df = pd.DataFrame(rows)
-        df.to_excel(writer, sheet_name="Dimension Analysis", index=False)
-        ws = writer.sheets["Dimension Analysis"]
-        for c, col in enumerate(df.columns):
-            ws.write(0, c, col, fmt["header"])
-            ws.set_column(c, c, 25)
+        """Create the Dimension Analysis sheet."""
+        sheet = "Dimension Analysis"
+        dimension_data = [
+            {"Dimension": dim, "Quality Score (%)": f"{score:.2f}"}
+            for dim, score in sorted(self.dimension_scores.items())
+        ]
+
+        df_dimension = pd.DataFrame(dimension_data)
+        df_dimension.to_excel(writer, sheet_name=sheet, index=False, startrow=3)
+        ws = writer.sheets[sheet]
+
+        ws.write(0, 0, "QUALITY DIMENSIONS ANALYSIS", fmt["title"])
+        ws.write(1, 0, f"Total Dimensions: {len(dimension_data)}", fmt["subtitle"])
+
+        for col_num, col_name in enumerate(df_dimension.columns):
+            ws.write(3, col_num, col_name, fmt["header"])
+
+        for row_num, row_data in df_dimension.iterrows():
+            for col_num, val in enumerate(row_data):
+                ws.write(row_num + 4, col_num, val, fmt["data"])
+
+        ws.set_column(0, 0, 25)
+        ws.set_column(1, 1, 20)
 
     # ──────────────────────────────────────────────────────────────────────
-    # Sheets 5..N : Annexure per column  (ALL columns, PASSED or FAILED)
+    # Sheet 5..N: Annexures (one per column) - FIXED WORKSHEET NAMES
     # ──────────────────────────────────────────────────────────────────────
     def _sheets_annexures(self, writer, df_out, fmt, failed_tracker):
-        """
-        One annexure sheet per data column.
-        - PASSED columns : rows 0-4 header only, empty data area, column headers on row 4
-        - FAILED columns : rows 0-3 header, row 4 column headers, rows 5+ failed records
-        """
-        skip = {"Issues", "Count of issues", "Failed_Rules",
-                "Failed_Columns", "Issue categories"}
-        n = 1
-        for col in self.all_columns:
-            if col.startswith("_") or col in skip:
-                continue
+        """Create annexure sheets for each column with safe names (≤31 chars)."""
+        data_cols = [
+            c
+            for c in self.all_columns
+            if not c.startswith("_")
+            and c not in ("Issues", "Count of issues", "Failed_Rules", "Failed_Columns", "Issue categories")
+        ]
 
-            failed_idx = sorted(failed_tracker.get(col, set()))
-            score      = self.column_scores.get(col, 100.0)
-            sheet      = f"Annexure {n}"
+        for idx, col in enumerate(data_cols, 1):
+            # Create safe sheet name (max 31 chars for Excel)
+            safe_col_name = col[:20] if len(col) > 20 else col
+            sheet = f"Annex_{idx}_{safe_col_name}"[:31]
+            
+            failed_indices = sorted(failed_tracker.get(col, set()))
+            score = self.column_scores.get(col, 0)
 
-            if failed_idx:
-                ann_df   = df_out.iloc[failed_idx].copy()
-                subtitle = f"Records with issues: {len(failed_idx)} | DQ Score: {score}%"
-                passed   = False
+            ws = writer.book.add_worksheet(sheet)
+            ws.write(0, 0, f"VALIDATION DETAILS - {col.upper()}", fmt["title"])
+            ws.write(1, 0, f"Quality Score: {score:.2f}%", fmt["subtitle"])
+            ws.write(2, 0, "Status: " + ("✅ PASSED" if score == 100 else "❌ FAILED"),
+                    fmt["pass"] if score == 100 else fmt["fail"])
+
+            if failed_indices:
+                annex_df = df_out.iloc[failed_indices].copy()
             else:
-                # Empty df with same columns → just headers shown on row 4
-                ann_df   = df_out.iloc[0:0].copy()
-                subtitle = "No issues found | DQ Score: 100%"
-                passed   = True
+                annex_df = df_out.copy()
 
-            # Write data starting at row 4 (leaves rows 0-3 for header info)
-            ann_df.to_excel(writer, sheet_name=sheet, startrow=4, index=False)
-            ws = writer.sheets[sheet]
-
-            ws.write(0, 0, f"Annexure {n}: {col}", fmt["title"])
-            ws.write(1, 0, subtitle,                 fmt["subtitle"])
-            ws.write(2, 0,
-                "Status: ✅ PASSED" if passed else "Status: ❌ FAILED",
-                fmt["pass"] if passed else fmt["fail"])
-            # Row 3 blank, row 4 has column headers from to_excel
-            for c, h in enumerate(df_out.columns):
-                ws.write(4, c, h, fmt["header"])
-                ws.set_column(c, c, 20)
-
-            n += 1
+            annex_df.to_excel(writer, sheet_name=sheet, index=False, startrow=4)
+            for col_num, col_name in enumerate(annex_df.columns):
+                ws.write(4, col_num, col_name, fmt["header"])
+                ws.set_column(col_num, col_num, 18)
 
     # ──────────────────────────────────────────────────────────────────────
-    # Uniqueness Issues sheet
+    # Uniqueness Issues Sheet
     # ──────────────────────────────────────────────────────────────────────
     def _sheet_uniqueness(self, writer, df_out, fmt):
-        """
-        Header rows 0-3, data from row 4.
-        Extra columns added: Duplicate_Combination, Duplicate_Count
-        'index' column preserved as first column.
-        """
+        """Create the Uniqueness Issues sheet."""
         dup_records = set()
         dup_details = []
+        
         for combo_str, groups in self.duplicate_combinations.items():
             for idx_list in groups:
                 dup_records.update(idx_list)
                 for idx in idx_list:
                     dup_details.append({
-                        "Index":                idx,
+                        "Index": idx,
                         "Duplicate_Combination": combo_str,
-                        "Duplicate_Count":       len(idx_list),
+                        "Duplicate_Count": len(idx_list),
                     })
 
         sheet = "Uniqueness Issues"
@@ -329,16 +445,15 @@ class ExcelReportGenerator:
                 pd.DataFrame(dup_details)
                 .groupby("Index")
                 .agg(
-                    Duplicate_Combination=("Duplicate_Combination",
-                                           lambda x: " | ".join(sorted(set(x)))),
+                    Duplicate_Combination=("Duplicate_Combination", 
+                                         lambda x: " | ".join(sorted(set(x)))),
                     Duplicate_Count=("Duplicate_Count", "max"),
                 )
                 .reset_index()
             )
 
-            dup_df = dup_df.reset_index()           # adds 'index' column
-            dup_df = dup_df.merge(info_df, left_on="index",
-                                  right_on="Index", how="left")
+            dup_df = dup_df.reset_index()
+            dup_df = dup_df.merge(info_df, left_on="index", right_on="Index", how="left")
             dup_df = dup_df.drop(columns=["Index"])
 
             dup_df.to_excel(writer, sheet_name=sheet, startrow=4, index=False)
@@ -346,6 +461,7 @@ class ExcelReportGenerator:
             ws.write(0, 0, "UNIQUENESS VALIDATION - DUPLICATE RECORDS", fmt["title"])
             ws.write(1, 0, f"Total Duplicate Records: {len(dup_records)}", fmt["subtitle"])
             ws.write(2, 0, "Status: ❌ FAILED", fmt["fail"])
+            
             for c, h in enumerate(dup_df.columns):
                 ws.write(4, c, h, fmt["header"])
                 ws.set_column(c, c, 20)
@@ -353,18 +469,14 @@ class ExcelReportGenerator:
             pd.DataFrame().to_excel(writer, sheet_name=sheet, startrow=4, index=False)
             ws = writer.sheets[sheet]
             ws.write(0, 0, "UNIQUENESS VALIDATION - DUPLICATE RECORDS", fmt["title"])
-            ws.write(1, 0, "No duplicate records found",                 fmt["subtitle"])
-            ws.write(2, 0, "Status: ✅ PASSED",                          fmt["pass"])
+            ws.write(1, 0, "No duplicate records found", fmt["subtitle"])
+            ws.write(2, 0, "Status: ✅ PASSED", fmt["pass"])
 
     # ──────────────────────────────────────────────────────────────────────
-    # Completeness Issues sheet
+    # Completeness Issues Sheet
     # ──────────────────────────────────────────────────────────────────────
     def _sheet_completeness(self, writer, df_out, fmt, dimension_tracker):
-        """
-        Header rows 0-3, data from row 4.
-        Extra column: Incomplete_Columns  (which not_null columns failed)
-        'index' column preserved as first column.
-        """
+        """Create the Completeness Issues sheet."""
         indices = set()
         for col_set in dimension_tracker.get("Completeness", {}).values():
             indices.update(col_set)
@@ -383,14 +495,13 @@ class ExcelReportGenerator:
                         if c:
                             bad_cols.append(c)
                 info.append({
-                    "Index":             idx,
+                    "Index": idx,
                     "Incomplete_Columns": ", ".join(sorted(set(bad_cols))),
                 })
 
             info_df = pd.DataFrame(info)
-            comp_df = comp_df.reset_index()         # adds 'index' column
-            comp_df = comp_df.merge(info_df, left_on="index",
-                                    right_on="Index", how="left")
+            comp_df = comp_df.reset_index()
+            comp_df = comp_df.merge(info_df, left_on="index", right_on="Index", how="left")
             comp_df = comp_df.drop(columns=["Index"])
 
             comp_df.to_excel(writer, sheet_name=sheet, startrow=4, index=False)
@@ -398,6 +509,7 @@ class ExcelReportGenerator:
             ws.write(0, 0, "COMPLETENESS VALIDATION - MISSING VALUES", fmt["title"])
             ws.write(1, 0, f"Total Records with Missing Values: {len(indices)}", fmt["subtitle"])
             ws.write(2, 0, "Status: ❌ FAILED", fmt["fail"])
+            
             for c, h in enumerate(comp_df.columns):
                 ws.write(4, c, h, fmt["header"])
                 ws.set_column(c, c, 20)
@@ -405,19 +517,14 @@ class ExcelReportGenerator:
             pd.DataFrame().to_excel(writer, sheet_name=sheet, startrow=4, index=False)
             ws = writer.sheets[sheet]
             ws.write(0, 0, "COMPLETENESS VALIDATION - MISSING VALUES", fmt["title"])
-            ws.write(1, 0, "No completeness issues found",              fmt["subtitle"])
-            ws.write(2, 0, "Status: ✅ PASSED",                         fmt["pass"])
+            ws.write(1, 0, "No completeness issues found", fmt["subtitle"])
+            ws.write(2, 0, "Status: ✅ PASSED", fmt["pass"])
 
     # ──────────────────────────────────────────────────────────────────────
-    # Standardization Issues sheet
+    # Standardization Issues Sheet
     # ──────────────────────────────────────────────────────────────────────
     def _sheet_standardization(self, writer, df_out, fmt, dimension_tracker):
-        """
-        Header rows 0-3, data from row 4.
-        Extra column: Non_Standard_Columns
-        'index' column preserved as first column.
-        Collects from dimension keys: 'Standardization', 'Validation'
-        """
+        """Create the Standardization Issues sheet."""
         indices = set()
         for dim_key in ("Standardization", "Validation"):
             for col_set in dimension_tracker.get(dim_key, {}).values():
@@ -432,29 +539,26 @@ class ExcelReportGenerator:
                 bad_cols = []
                 row = self.results_df.iloc[idx]
                 for rd in (row.get("_failed_rules_details") or []):
-                    if isinstance(rd, dict) and rd.get("dimension") in (
-                            "Standardization", "Validation"):
+                    if isinstance(rd, dict) and rd.get("dimension") in ("Standardization", "Validation"):
                         c = rd.get("column", "")
                         if c:
                             bad_cols.append(c)
                 info.append({
-                    "Index":               idx,
+                    "Index": idx,
                     "Non_Standard_Columns": ", ".join(sorted(set(bad_cols))),
                 })
 
             info_df = pd.DataFrame(info)
-            std_df  = std_df.reset_index()          # adds 'index' column
-            std_df  = std_df.merge(info_df, left_on="index",
-                                   right_on="Index", how="left")
-            std_df  = std_df.drop(columns=["Index"])
+            std_df = std_df.reset_index()
+            std_df = std_df.merge(info_df, left_on="index", right_on="Index", how="left")
+            std_df = std_df.drop(columns=["Index"])
 
             std_df.to_excel(writer, sheet_name=sheet, startrow=4, index=False)
             ws = writer.sheets[sheet]
             ws.write(0, 0, "STANDARDIZATION VALIDATION - FORMAT ISSUES", fmt["title"])
-            ws.write(1, 0,
-                f"Total Records with Standardization Issues: {len(indices)}",
-                fmt["subtitle"])
+            ws.write(1, 0, f"Total Records with Standardization Issues: {len(indices)}", fmt["subtitle"])
             ws.write(2, 0, "Status: ❌ FAILED", fmt["fail"])
+            
             for c, h in enumerate(std_df.columns):
                 ws.write(4, c, h, fmt["header"])
                 ws.set_column(c, c, 20)
@@ -462,14 +566,15 @@ class ExcelReportGenerator:
             pd.DataFrame().to_excel(writer, sheet_name=sheet, startrow=4, index=False)
             ws = writer.sheets[sheet]
             ws.write(0, 0, "STANDARDIZATION VALIDATION - FORMAT ISSUES", fmt["title"])
-            ws.write(1, 0, "No standardization issues found",             fmt["subtitle"])
-            ws.write(2, 0, "Status: ✅ PASSED",                           fmt["pass"])
+            ws.write(1, 0, "No standardization issues found", fmt["subtitle"])
+            ws.write(2, 0, "Status: ✅ PASSED", fmt["pass"])
 
     # ──────────────────────────────────────────────────────────────────────
-    # Helper
+    # Helper Methods
     # ──────────────────────────────────────────────────────────────────────
     @staticmethod
     def _interpret(score: float) -> str:
+        """Generate human-readable interpretation of quality score."""
         if score >= 95:
             return "🎉 Excellent! Outstanding data quality."
         if score >= 80:
