@@ -589,8 +589,9 @@ def page_maturity():
 
     sync_response_tables()
 
-    if dq_score is not None:
+    if dq_score is not None and not st.session_state.get("dq_autofilled"):
         autofill_dq_dimension(dq_score)
+        st.session_state["dq_autofilled"] = True
 
     # ── REPORT VIEW (after submit) ─────────────────────────────────────
     if submitted and st.session_state.get("mat_payload"):
@@ -722,12 +723,12 @@ def page_maturity():
                     obj, options=RATING_LABELS, required=True)
 
             edited = st.data_editor(
-                df,
+                st.session_state.mat_responses[dim],   # ← pass directly, no .copy()
                 use_container_width=True,
                 hide_index=True,
                 column_config=cfg,
                 disabled=["Question ID", "Section", "Question"],
-                key=f"mat_editor_{dim}_{hash(dim)}",   # avoid key collision
+                key=f"mat_editor_{dim}",
             )
 
             st.session_state.mat_responses[dim] = edited
