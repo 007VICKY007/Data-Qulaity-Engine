@@ -1,0 +1,373 @@
+{
+  "rules": [
+    {
+      "column": "id",
+      "dimension": "Completeness",
+      "rule_type": "not_null",
+      "expression": null,
+      "message": "id: not_null validation failed",
+      "severity": "MEDIUM"
+    },
+    {
+      "column": "id",
+      "dimension": "Uniqueness",
+      "rule_type": "uniqueness",
+      "expression": null,
+      "message": "id: uniqueness validation failed",
+      "severity": "MEDIUM"
+    },
+    {
+      "column": "entity_code",
+      "dimension": "Completeness",
+      "rule_type": "not_null",
+      "expression": null,
+      "message": "entity_code: not_null validation failed",
+      "severity": "MEDIUM"
+    },
+    {
+      "column": "entity_code",
+      "dimension": "Validation",
+      "rule_type": "must follow predefined entity code format",
+      "expression": null,
+      "message": "entity_code: must follow predefined entity code format validation failed",
+      "severity": "MEDIUM"
+    },
+    {
+      "column": "entity_code",
+      "dimension": "Uniqueness",
+      "rule_type": "uniqueness",
+      "expression": null,
+      "message": "entity_code: uniqueness validation failed",
+      "severity": "MEDIUM"
+    },
+    {
+      "column": "entity_type",
+      "dimension": "Completeness",
+      "rule_type": "not_null",
+      "expression": null,
+      "message": "entity_type: not_null validation failed",
+      "severity": "MEDIUM"
+    },
+    {
+      "column": "entity_type",
+      "dimension": "Validation",
+      "rule_type": "must be from allowed entity type list",
+      "expression": null,
+      "message": "entity_type: must be from allowed entity type list validation failed",
+      "severity": "MEDIUM"
+    },
+    {
+      "column": "name",
+      "dimension": "Completeness",
+      "rule_type": "not_null",
+      "expression": null,
+      "message": "name: not_null validation failed",
+      "severity": "MEDIUM"
+    },
+    {
+      "column": "name",
+      "dimension": "Standardization",
+      "rule_type": "trim leading/trailing/multiple spaces and standardize case",
+      "expression": null,
+      "message": "name: trim leading/trailing/multiple spaces and standardize case validation failed",
+      "severity": "MEDIUM"
+    },
+    {
+      "column": "name",
+      "dimension": "Standardization",
+      "rule_type": "remove legal suffix variations into canonical suffix",
+      "expression": null,
+      "message": "name: remove legal suffix variations into canonical suffix validation failed",
+      "severity": "MEDIUM"
+    },
+    {
+      "column": "name",
+      "dimension": "Validation",
+      "rule_type": "no_special_chars",
+      "expression": null,
+      "message": "name: no_special_chars validation failed",
+      "severity": "MEDIUM"
+    },
+    {
+      "column": "pan_number",
+      "dimension": "Completeness",
+      "rule_type": "should not be null for indian entities",
+      "expression": null,
+      "message": "pan_number: should not be null for indian entities validation failed",
+      "severity": "MEDIUM"
+    },
+    {
+      "column": "pan_number",
+      "dimension": "Validation",
+      "rule_type": "must follow pan format (aaaaa9999a)",
+      "expression": null,
+      "message": "pan_number: must follow pan format (aaaaa9999a) validation failed",
+      "severity": "MEDIUM"
+    },
+    {
+      "column": "iec",
+      "dimension": "Validation",
+      "rule_type": "must follow iec code format",
+      "expression": null,
+      "message": "iec: must follow iec code format validation failed",
+      "severity": "MEDIUM"
+    },
+    {
+      "column": "iec",
+      "dimension": "Completeness",
+      "rule_type": "not_null",
+      "expression": null,
+      "message": "iec: not_null validation failed",
+      "severity": "MEDIUM"
+    },
+    {
+      "column": "cin_no",
+      "dimension": "Validation",
+      "rule_type": "must follow cin structure",
+      "expression": null,
+      "message": "cin_no: must follow cin structure validation failed",
+      "severity": "MEDIUM"
+    },
+    {
+      "column": "tan_number",
+      "dimension": "Validation",
+      "rule_type": "must follow tan format",
+      "expression": null,
+      "message": "tan_number: must follow tan format validation failed",
+      "severity": "MEDIUM"
+    },
+    {
+      "column": "company_registration_number",
+      "dimension": "Validation",
+      "rule_type": "should be valid as per registrar database",
+      "expression": null,
+      "message": "company_registration_number: should be valid as per registrar database validation failed",
+      "severity": "MEDIUM"
+    },
+    {
+      "column": "ein",
+      "dimension": "Validation",
+      "rule_type": "must follow ein format",
+      "expression": null,
+      "message": "ein: must follow ein format validation failed",
+      "severity": "MEDIUM"
+    },
+    {
+      "column": "eori",
+      "dimension": "Validation",
+      "rule_type": "must follow eori format",
+      "expression": null,
+      "message": "eori: must follow eori format validation failed",
+      "severity": "MEDIUM"
+    },
+    {
+      "column": "vat_no",
+      "dimension": "Validation",
+      "rule_type": "must follow country-specific vat format",
+      "expression": null,
+      "message": "vat_no: must follow country-specific vat format validation failed",
+      "severity": "MEDIUM"
+    },
+    {
+      "column": "country",
+      "dimension": "Completeness",
+      "rule_type": "not_null",
+      "expression": null,
+      "message": "country: not_null validation failed",
+      "severity": "MEDIUM"
+    },
+    {
+      "column": "country",
+      "dimension": "Standardization",
+      "rule_type": "map country variants to standard country name",
+      "expression": null,
+      "message": "country: map country variants to standard country name validation failed",
+      "severity": "MEDIUM"
+    },
+    {
+      "column": "country",
+      "dimension": "Validation",
+      "rule_type": "must be valid & existing country",
+      "expression": null,
+      "message": "country: must be valid & existing country validation failed",
+      "severity": "MEDIUM"
+    },
+    {
+      "column": "website",
+      "dimension": "Validation",
+      "rule_type": "must follow valid url format",
+      "expression": null,
+      "message": "website: must follow valid url format validation failed",
+      "severity": "MEDIUM"
+    },
+    {
+      "column": "website",
+      "dimension": "Standardization",
+      "rule_type": "normalize to lowercase and remove trailing slash",
+      "expression": null,
+      "message": "website: normalize to lowercase and remove trailing slash validation failed",
+      "severity": "MEDIUM"
+    },
+    {
+      "column": "nature_of_business",
+      "dimension": "Completeness",
+      "rule_type": "not_null",
+      "expression": null,
+      "message": "nature_of_business: not_null validation failed",
+      "severity": "MEDIUM"
+    },
+    {
+      "column": "nature_of_business",
+      "dimension": "Standardization",
+      "rule_type": "must map to standard industry classification",
+      "expression": null,
+      "message": "nature_of_business: must map to standard industry classification validation failed",
+      "severity": "MEDIUM"
+    },
+    {
+      "column": "company_type",
+      "dimension": "Validation",
+      "rule_type": "must be from predefined list",
+      "expression": null,
+      "message": "company_type: must be from predefined list validation failed",
+      "severity": "MEDIUM"
+    },
+    {
+      "column": "year_of_establishment",
+      "dimension": "Validation",
+      "rule_type": "must be less than or equal to current year",
+      "expression": null,
+      "message": "year_of_establishment: must be less than or equal to current year validation failed",
+      "severity": "MEDIUM"
+    },
+    {
+      "column": "year_of_establishment",
+      "dimension": "Validation",
+      "rule_type": "must be greater than 1800",
+      "expression": null,
+      "message": "year_of_establishment: must be greater than 1800 validation failed",
+      "severity": "MEDIUM"
+    },
+    {
+      "column": "is_inactive",
+      "dimension": "Validation",
+      "rule_type": "must be y/n or true/false",
+      "expression": null,
+      "message": "is_inactive: must be y/n or true/false validation failed",
+      "severity": "MEDIUM"
+    },
+    {
+      "column": "is_msme",
+      "dimension": "Validation",
+      "rule_type": "must be y/n or true/false",
+      "expression": null,
+      "message": "is_msme: must be y/n or true/false validation failed",
+      "severity": "MEDIUM"
+    },
+    {
+      "column": "deleted",
+      "dimension": "Validation",
+      "rule_type": "must be 0/1 flag",
+      "expression": null,
+      "message": "deleted: must be 0/1 flag validation failed",
+      "severity": "MEDIUM"
+    },
+    {
+      "column": "created_on",
+      "dimension": "Completeness",
+      "rule_type": "should not be null",
+      "expression": null,
+      "message": "created_on: should not be null validation failed",
+      "severity": "MEDIUM"
+    },
+    {
+      "column": "created_on",
+      "dimension": "Validation",
+      "rule_type": "date_format",
+      "expression": null,
+      "message": "created_on: date_format validation failed",
+      "severity": "MEDIUM"
+    },
+    {
+      "column": "updated_on",
+      "dimension": "Validation",
+      "rule_type": "must be greater than or equal to created_on",
+      "expression": null,
+      "message": "updated_on: must be greater than or equal to created_on validation failed",
+      "severity": "MEDIUM"
+    },
+    {
+      "column": "created_by",
+      "dimension": "Completeness",
+      "rule_type": "should not be null",
+      "expression": null,
+      "message": "created_by: should not be null validation failed",
+      "severity": "MEDIUM"
+    },
+    {
+      "column": "updated_by",
+      "dimension": "Completeness",
+      "rule_type": "date_format",
+      "expression": null,
+      "message": "updated_by: date_format validation failed",
+      "severity": "MEDIUM"
+    },
+    {
+      "column": "stamp",
+      "dimension": "Completeness",
+      "rule_type": "must be available for registered entities",
+      "expression": null,
+      "message": "stamp: must be available for registered entities validation failed",
+      "severity": "MEDIUM"
+    },
+    {
+      "column": "signature",
+      "dimension": "Completeness",
+      "rule_type": "must be available for authorized entities",
+      "expression": null,
+      "message": "signature: must be available for authorized entities validation failed",
+      "severity": "MEDIUM"
+    },
+    {
+      "column": "prefix",
+      "dimension": " Ms",
+      "rule_type": "must be from allowed prefix list (mr",
+      "expression": null,
+      "message": "prefix: must be from allowed prefix list (mr validation failed",
+      "severity": "MEDIUM"
+    },
+    {
+      "column": "bond_number",
+      "dimension": "Validation",
+      "rule_type": "must follow bond registration format",
+      "expression": null,
+      "message": "bond_number: must follow bond registration format validation failed",
+      "severity": "MEDIUM"
+    },
+    {
+      "rule_type": "uniqueness_combination",
+      "columns": [
+        "pan_number",
+        "name"
+      ],
+      "dimension": "Uniqueness",
+      "message": "Combination pan_number + name should be unique",
+      "severity": "HIGH"
+    },
+    {
+      "rule_type": "uniqueness_combination",
+      "columns": [
+        "country",
+        "vat_no"
+      ],
+      "dimension": "Validation",
+      "message": "Combination country + vat_no should be unique",
+      "severity": "HIGH"
+    }
+  ],
+  "metadata": {
+    "created": "2026-02-12T18:28:51.049663",
+    "total_rules": 45,
+    "source": "rules_dataset"
+  }
+}
