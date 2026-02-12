@@ -13,6 +13,7 @@ name,Should not contain unwanted special characters,Validation
 pan_number,Should not be null for Indian entities,Completeness
 pan_number,Must follow PAN format (AAAAA9999A),Validation
 iec,Must follow IEC code format,Validation
+iec,Should not be null or blank,Completeness
 cin_no,Must follow CIN structure,Validation
 tan_number,Must follow TAN format,Validation
 company_registration_number,Should be valid as per registrar database,Validation
