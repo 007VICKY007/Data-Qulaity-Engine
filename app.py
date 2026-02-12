@@ -446,7 +446,26 @@ def page_dq():
         with st.expander("🔍 Full traceback"):
             st.code(traceback.format_exc())
 
+def _apply_editor_edits(dim: str, editor_key: str) -> None:
+    """
+    Called by on_change whenever the user edits a cell.
+    Reads the delta from widget state and applies it directly
+    to mat_responses — before the next rerun touches anything.
+    """
+    widget_state = st.session_state.get(editor_key)
+    if not widget_state:
+        return
 
+    edited_rows = widget_state.get("edited_rows", {})
+    if not edited_rows:
+        return
+
+    df = st.session_state.mat_responses[dim].copy()
+    for row_idx, changes in edited_rows.items():
+        for col, val in changes.items():
+            df.at[int(row_idx), col] = val
+
+    st.session_state.mat_responses[dim] = df
 # ══════════════════════════════════════════════════════════════════════════
 #  PAGE: MATURITY ASSESSMENT
 # ══════════════════════════════════════════════════════════════════════════
@@ -587,10 +606,30 @@ def page_maturity():
         st.info("⚙️ Please select at least one **Object** and one **Dimension** in the sidebar.")
         st.stop()
 
-    sync_response_tables()
+    # sync_response_tables()
+
+    # if dq_score is not None and not st.session_state.get("dq_autofilled"):
+    #     autofill_dq_dimension(dq_score)
+    #     st.session_state["dq_autofilled"] = True
+
+    # Only sync if objects/dims changed (not on every rerun)
+    prev_objs = st.session_state.get("_last_sync_objects")
+    prev_dims = st.session_state.get("_last_sync_dims")
+    curr_objs = st.session_state.mat_objects
+    curr_dims = st.session_state.mat_dims
+
+    if prev_objs != curr_objs or prev_dims != curr_dims:
+        sync_response_tables()
+        # Clear snapshots so they rebuild with new columns/rows
+        for d in curr_dims:
+            st.session_state.pop(f"mat_snap_{d}", None)
+        st.session_state["_last_sync_objects"] = list(curr_objs)
+        st.session_state["_last_sync_dims"]    = list(curr_dims)
 
     if dq_score is not None and not st.session_state.get("dq_autofilled"):
         autofill_dq_dimension(dq_score)
+        # Also clear DQ dim snapshot so it rebuilds with autofilled values
+        st.session_state.pop("mat_snap_Data Quality", None)
         st.session_state["dq_autofilled"] = True
 
     # ── REPORT VIEW (after submit) ─────────────────────────────────────
@@ -712,7 +751,7 @@ def page_maturity():
                     "You can still adjust individual ratings."
                 )
 
-            df = st.session_state.mat_responses[dim].copy()
+            # df = st.session_state.mat_responses[dim].copy()
 
             cfg = {
                 "Weight": st.column_config.NumberColumn(
@@ -722,16 +761,18 @@ def page_maturity():
                 cfg[obj] = st.column_config.SelectboxColumn(
                     obj, options=RATING_LABELS, required=True)
 
-            edited = st.data_editor(
-                st.session_state.mat_responses[dim],   # ← pass directly, no .copy()
+            editor_key = f"mat_editor_{dim}"
+
+            st.data_editor(
+                st.session_state.mat_responses[dim],
                 use_container_width=True,
                 hide_index=True,
                 column_config=cfg,
                 disabled=["Question ID", "Section", "Question"],
-                key=f"mat_editor_{dim}",
+                key=editor_key,
+                on_change=_apply_editor_edits,
+                args=(dim, editor_key),
             )
-
-            st.session_state.mat_responses[dim] = edited
 
     st.divider()
     lft, rgt = st.columns([1, 3])
