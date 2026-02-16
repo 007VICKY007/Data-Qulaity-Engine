@@ -1,10 +1,3 @@
-"""
-modules/report_generator.py - COMBINED FINAL VERSION
-====================================================
-Summary Sheet: Shows total duplicate count for EAN_CODE and SCAN_IDENTIFIER
-Uniqueness Issues Sheet: Shows ONLY duplicate records with row indices and data
-"""
-
 import json
 import datetime
 import pandas as pd
@@ -37,7 +30,7 @@ def get_timestamp() -> str:
 
 
 class ExcelReportGenerator:
-    """Generate clean, clear DQ reports with duplicate records."""
+    """Generate clean, clear DQ reports."""
 
     def __init__(
         self,
@@ -94,6 +87,7 @@ class ExcelReportGenerator:
                 self._sheet_summary(writer, df_out, fmt, failed_tracker)
                 self._sheet_results(writer, df_out, fmt)
                 self._sheet_dimension(writer, fmt)
+                self._sheet_duplicate_summary(writer, fmt)
                 self._sheets_annexures(writer, df_out, fmt, failed_tracker)
                 self._sheet_uniqueness(writer, df_out, fmt, uniqueness_failures)
                 self._sheet_completeness(writer, df_out, fmt, dimension_tracker)
@@ -208,7 +202,7 @@ class ExcelReportGenerator:
         ws.set_column(1, 1, 20)
 
     def _sheet_summary(self, writer, df_out, fmt, failed_tracker):
-        """Create Summary sheet with column pass/fail status AND duplicate counts."""
+        """Create Summary sheet with column pass/fail status."""
         summary_data = []
         for col in self.all_columns:
             if col.startswith("_") or col in ("Issues", "Count of issues", "Failed_Rules", "Failed_Columns", "Issue categories"):
@@ -221,12 +215,6 @@ class ExcelReportGenerator:
         ws = writer.book.add_worksheet("Summary")
         ws.write(0, 0, "COLUMN-WISE VALIDATION SUMMARY", fmt["title"])
         ws.write(1, 0, f"Total Columns: {len(summary_data)}", fmt["subtitle"])
-        
-        # ADDED: Total duplicate count for EAN_CODE and SCAN_IDENTIFIER
-        ean_duplicates = len(failed_tracker.get("ean_code", set())) if "ean_code" in failed_tracker else 0
-        scan_duplicates = len(failed_tracker.get("scan_identifier", set())) if "scan_identifier" in failed_tracker else 0
-        ws.write(2, 0, f"Total Duplicates in EAN_CODE: {ean_duplicates} | Total Duplicates in SCAN_IDENTIFIER: {scan_duplicates}", fmt["subtitle"])
-        
         for col_num, col_name in enumerate(df_summary.columns):
             ws.write(3, col_num, col_name, fmt["header"])
         for row_num, row_data in df_summary.iterrows():
@@ -266,6 +254,72 @@ class ExcelReportGenerator:
             status_fmt = fmt["pass"] if score == 100 else (fmt["warning"] if score >= 80 else fmt["fail"])
             ws.write(row_num, 1, f"{score:.2f}%", status_fmt)
 
+    def _calculate_duplicate_count_per_column(self) -> Dict[str, int]:
+        """Calculate total duplicate records per column based on validation rules."""
+        duplicate_count = {}
+        
+        # Check if rulebook has rules
+        if not self.rulebook or "rules" not in self.rulebook:
+            return duplicate_count
+        
+        rules = self.rulebook.get("rules", [])
+        
+        # Iterate through rules to find columns with uniqueness/duplicate validation
+        for rule in rules:
+            if isinstance(rule, dict):
+                # Check if rule is for uniqueness/duplicates
+                rule_type = rule.get("rule_type", "").lower()
+                column = rule.get("column")
+                
+                if rule_type in ["uniqueness", "duplicate"] and column:
+                    # Count duplicates in this column from results_df
+                    if column in self.results_df.columns:
+                        dup_count = self.results_df[column].duplicated().sum()
+                        if dup_count > 0:
+                            duplicate_count[column] = int(dup_count)
+        
+        return duplicate_count
+
+    def _sheet_duplicate_summary(self, writer, fmt):
+        """Create Duplicate Summary sheet showing count per column with validation rules."""
+        ws = writer.book.add_worksheet("Duplicate Summary")
+        ws.write(0, 0, "DUPLICATE COUNT SUMMARY BY COLUMN", fmt["title"])
+        
+        # Get duplicate counts for columns with rules
+        dup_counts = self._calculate_duplicate_count_per_column()
+        
+        if not dup_counts:
+            ws.write(1, 0, "No duplicate validation rules found or no duplicates detected", fmt["subtitle"])
+            ws.write(2, 0, "Status: ✅ PASSED", fmt["pass"])
+            return
+        
+        ws.write(1, 0, f"Columns with Duplicate Rules: {len(dup_counts)}", fmt["subtitle"])
+        
+        # Calculate total duplicates
+        total_duplicates = sum(dup_counts.values())
+        ws.write(2, 0, f"Total Duplicate Records: {total_duplicates}", fmt["subtitle"])
+        
+        # Write headers
+        headers = ["Column Name", "Duplicate Count", "Status"]
+        for col_num, header in enumerate(headers):
+            ws.write(4, col_num, header, fmt["header"])
+        
+        ws.set_column(0, 0, 30)
+        ws.set_column(1, 1, 20)
+        ws.set_column(2, 2, 15)
+        
+        # Write data
+        row_num = 5
+        for col_name in sorted(dup_counts.keys()):
+            dup_count = dup_counts[col_name]
+            status = "FAIL" if dup_count > 0 else "PASS"
+            status_fmt = fmt["fail"] if dup_count > 0 else fmt["pass"]
+            
+            ws.write(row_num, 0, col_name, fmt["data"])
+            ws.write(row_num, 1, dup_count, fmt["data_center"])
+            ws.write(row_num, 2, status, status_fmt)
+            row_num += 1
+
     def _sheets_annexures(self, writer, df_out, fmt, failed_tracker):
         """Create SEPARATE annexure sheets for columns with ISSUES ONLY."""
         workbook = writer.book
@@ -302,8 +356,8 @@ class ExcelReportGenerator:
 
     def _sheet_uniqueness(self, writer, df_out, fmt, uniqueness_failures):
         """
-        Create Uniqueness Issues sheet with ONLY duplicate records.
-        Shows row indices, failed columns, and complete record data.
+        Create Uniqueness Issues sheet - ULTRA SIMPLIFIED
+        No pandas merges - direct indexing only
         """
         ws = writer.book.add_worksheet("Uniqueness Issues")
         ws.write(0, 0, "UNIQUENESS VALIDATION - DUPLICATE RECORDS", fmt["title"])
@@ -330,20 +384,20 @@ class ExcelReportGenerator:
             ws.write(2, 0, "Status: ✅ PASSED", fmt["pass"])
             return
         
-        # Write header with count
+        # Write header
         ws.write(1, 0, f"Total Duplicate Records: {len(all_dup_indices)}", fmt["subtitle"])
         ws.write(2, 0, "Status: ❌ FAILED - DUPLICATES FOUND", fmt["fail"])
         
         # Setup column headers
         display_cols = [c for c in df_out.columns if not c.startswith("_")]
-        header_cols = ["Row_Index", "Failed_Column"] + display_cols
+        header_cols = ["Row_Index", "Failed_Column", "Issue_Type"] + display_cols
         
         # Write headers (row 4)
         for col_num, col_name in enumerate(header_cols):
             ws.write(4, col_num, col_name, fmt["header"])
             ws.set_column(col_num, col_num, 18)
         
-        # Write duplicate records - ONLY duplicate data with row indices
+        # Write duplicate records - ULTRA SIMPLE approach
         sorted_indices = sorted(all_dup_indices)
         
         for write_row_num, orig_idx in enumerate(sorted_indices, 5):
@@ -351,13 +405,16 @@ class ExcelReportGenerator:
                 # Row index
                 ws.write(write_row_num, 0, orig_idx, fmt["data"])
                 
-                # Failed columns (which uniqueness rule failed)
+                # Failed columns
                 failed_cols = col_map.get(orig_idx, [])
-                ws.write(write_row_num, 1, ", ".join(failed_cols), fmt["fail"])
+                ws.write(write_row_num, 1, ", ".join(failed_cols), fmt["data"])
+                
+                # Issue type
+                ws.write(write_row_num, 2, "Uniqueness Violation", fmt["fail"])
                 
                 # Record data - direct iloc access
                 record = df_out.iloc[orig_idx]
-                for col_num, col_name in enumerate(display_cols, 2):
+                for col_num, col_name in enumerate(display_cols, 3):
                     value = record[col_name]
                     ws.write(write_row_num, col_num, str(value) if value is not None else "", fmt["data"])
                     
@@ -387,7 +444,10 @@ class ExcelReportGenerator:
             
             for write_row_num, idx in enumerate(sorted_indices, 5):
                 try:
+                    # Row index
                     ws.write(write_row_num, 0, idx, fmt["data"])
+                    
+                    # Get incomplete columns
                     bad_cols = []
                     row = self.results_df.iloc[idx]
                     for rd in (row.get("_failed_rules_details") or []):
@@ -395,7 +455,10 @@ class ExcelReportGenerator:
                             c = rd.get("column", "")
                             if c:
                                 bad_cols.append(c)
+                    
                     ws.write(write_row_num, 1, ", ".join(sorted(set(bad_cols))), fmt["data"])
+                    
+                    # Record data
                     record = df_out.iloc[idx]
                     for col_num, col_name in enumerate(display_cols, 2):
                         value = record[col_name]
@@ -430,7 +493,10 @@ class ExcelReportGenerator:
             
             for write_row_num, idx in enumerate(sorted_indices, 5):
                 try:
+                    # Row index
                     ws.write(write_row_num, 0, idx, fmt["data"])
+                    
+                    # Get non-standard columns
                     bad_cols = []
                     row = self.results_df.iloc[idx]
                     for rd in (row.get("_failed_rules_details") or []):
@@ -438,7 +504,10 @@ class ExcelReportGenerator:
                             c = rd.get("column", "")
                             if c:
                                 bad_cols.append(c)
+                    
                     ws.write(write_row_num, 1, ", ".join(sorted(set(bad_cols))), fmt["data"])
+                    
+                    # Record data
                     record = df_out.iloc[idx]
                     for col_num, col_name in enumerate(display_cols, 2):
                         value = record[col_name]
