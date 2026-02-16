@@ -5,6 +5,8 @@ Helper functions for file operations, data cleaning, etc.
 
 import os
 import shutil
+import time
+import gc
 from pathlib import Path
 from datetime import datetime
 import pandas as pd
@@ -21,10 +23,82 @@ def setup_directories():
 
 
 def clean_temp_directory():
-    """Clean temporary directory"""
-    if AppConfig.TEMP_DIR.exists():
+    """
+    Clean temporary directory with robust error handling.
+    Handles file locks and permissions issues on Windows.
+    """
+    if not AppConfig.TEMP_DIR.exists():
+        AppConfig.TEMP_DIR.mkdir(exist_ok=True)
+        return
+
+    try:
+        # Force garbage collection to release file handles
+        gc.collect()
+        
+        # Try to remove directory
         shutil.rmtree(AppConfig.TEMP_DIR)
-    AppConfig.TEMP_DIR.mkdir(exist_ok=True)
+        AppConfig.TEMP_DIR.mkdir(exist_ok=True)
+        
+    except PermissionError:
+        # If permission denied, try to remove files individually
+        try:
+            for file_path in AppConfig.TEMP_DIR.iterdir():
+                try:
+                    if file_path.is_file():
+                        # Close any open handles
+                        try:
+                            file_path.unlink()
+                        except PermissionError:
+                            # Wait a bit and try again
+                            time.sleep(0.5)
+                            file_path.unlink()
+                    elif file_path.is_dir():
+                        shutil.rmtree(file_path)
+                except (PermissionError, OSError) as e:
+                    # If we still can't delete, just skip and continue
+                    pass
+            
+            # Try to recreate directory
+            AppConfig.TEMP_DIR.mkdir(exist_ok=True)
+            
+        except Exception as e:
+            # If all else fails, just ensure directory exists
+            AppConfig.TEMP_DIR.mkdir(exist_ok=True)
+    
+    except Exception as e:
+        # Fallback: just ensure directory exists
+        AppConfig.TEMP_DIR.mkdir(exist_ok=True)
+
+
+def clean_temp_directory_safe(max_retries: int = 3):
+    """
+    Enhanced temp directory cleaning with retry logic.
+    
+    Args:
+        max_retries: Number of times to retry if cleaning fails
+    """
+    for attempt in range(max_retries):
+        try:
+            # Force garbage collection
+            gc.collect()
+            
+            if AppConfig.TEMP_DIR.exists():
+                shutil.rmtree(AppConfig.TEMP_DIR)
+            
+            AppConfig.TEMP_DIR.mkdir(exist_ok=True)
+            return True
+            
+        except (PermissionError, OSError) as e:
+            if attempt < max_retries - 1:
+                # Wait before retrying
+                time.sleep(0.5)
+                continue
+            else:
+                # Last attempt failed, just ensure directory exists
+                AppConfig.TEMP_DIR.mkdir(exist_ok=True)
+                return False
+    
+    return False
 
 
 def save_uploaded_file(uploaded_file, directory: Path) -> Path:

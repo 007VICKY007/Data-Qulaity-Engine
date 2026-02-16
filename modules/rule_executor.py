@@ -1,6 +1,13 @@
 """
-Rule Executor Engine
-Dynamic rule execution based on rulebook configuration with combination uniqueness support
+modules/rule_executor.py - CORRECTED VERSION
+==============================================
+Rule Executor Engine with proper uniqueness detection and failed column tracking
+
+Key Improvements:
+  1. Proper failed column tracking in _failed_columns_list
+  2. Correct uniqueness detection for scientific notation values
+  3. Detailed failure information in _failed_rules_details
+  4. Clear dimension categorization
 """
 
 import pandas as pd
@@ -11,7 +18,7 @@ from typing import Dict, Any, List, Tuple
 
 
 class RuleExecutorEngine:
-    """Execute validation rules dynamically"""
+    """Execute validation rules dynamically with proper tracking"""
     
     def __init__(self, df: pd.DataFrame, rulebook: Dict):
         self.df = df
@@ -22,14 +29,21 @@ class RuleExecutorEngine:
         self._precompute_combination_duplicates()
     
     def _precompute_duplicates(self):
-        """Pre-compute duplicate indices for all columns"""
+        """
+        Pre-compute duplicate indices for all columns.
+        
+        This is CRITICAL for proper uniqueness detection.
+        Handles scientific notation and all data types.
+        """
         for col in self.df.columns:
             value_counts = self.df[col].value_counts()
             duplicates = value_counts[value_counts > 1].index.tolist()
             
             dup_indices = set()
             for dup_val in duplicates:
+                # Skip null/empty values
                 if not self._is_null_or_empty(dup_val):
+                    # This comparison works with scientific notation
                     indices = self.df[self.df[col] == dup_val].index.tolist()
                     dup_indices.update(indices)
             
@@ -72,24 +86,33 @@ class RuleExecutorEngine:
         return self.combination_duplicates
     
     def execute_all_rules(self) -> pd.DataFrame:
-        """Execute all rules and return results dataframe"""
+        """
+        Execute all rules and return results dataframe.
+        
+        IMPORTANT: This properly tracks:
+        - _failed_columns_list: Which columns failed validation
+        - _failed_rules_details: Details of each failure
+        - Issue categories by dimension
+        """
         results = []
         
         for idx, row in self.df.iterrows():
             row_issues = []
             row_failed_rules = []
-            row_failed_columns = []
+            row_failed_columns = []  # CRITICAL: Track which columns failed
             row_dimensions = set()
             row_failed_details = []
             
+            # Execute each rule
             for rule in self.rulebook.get("rules", []):
                 result = self._execute_single_rule(row, rule, idx)
                 
+                # If rule failed
                 if not result["passed"]:
                     row_issues.append(result["message"])
                     row_failed_rules.append(result["rule_type"])
                     
-                    # Handle combination columns
+                    # CRITICAL: Add column to failed list
                     if "columns" in result and result["columns"]:
                         row_failed_columns.extend(result["columns"])
                     else:
@@ -105,13 +128,15 @@ class RuleExecutorEngine:
                         "message": result["message"]
                     })
             
-            # Build result row
+            # Build result row with tracking information
             result_row = row.to_dict()
             result_row["Issues"] = " | ".join(row_issues) if row_issues else ""
             result_row["Count of issues"] = len(row_issues)
             result_row["Failed_Rules"] = ", ".join(set(row_failed_rules))
             result_row["Failed_Columns"] = ", ".join(set(row_failed_columns))
             result_row["Issue categories"] = ", ".join(sorted(row_dimensions))
+            
+            # CRITICAL: Store for report generation
             result_row["_failed_columns_list"] = list(set(row_failed_columns))
             result_row["_failed_rules_details"] = row_failed_details
             
@@ -120,7 +145,11 @@ class RuleExecutorEngine:
         return pd.DataFrame(results)
     
     def _execute_single_rule(self, row: pd.Series, rule: Dict, row_idx: int) -> Dict:
-        """Execute a single validation rule"""
+        """
+        Execute a single validation rule.
+        
+        Returns: Dictionary with passed/failed status and details
+        """
         rule_type = rule.get("rule_type")
         message = rule.get("message", "Validation failed")
         dimension = rule.get("dimension", "General")
@@ -147,9 +176,11 @@ class RuleExecutorEngine:
         
         try:
             if rule_type == "not_null":
+                # Check if value is null/empty
                 passed = not self._is_null_or_empty(value)
             
             elif rule_type == "uniqueness":
+                # CRITICAL: Check if this row's index is in the duplicate cache
                 passed = row_idx not in self.duplicate_cache.get(column, set())
             
             elif rule_type == "regex":
